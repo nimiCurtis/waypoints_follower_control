@@ -1,0 +1,86 @@
+#pragma once
+
+#include "PID.hpp"
+#include <math.hpp>
+
+// ROS
+#include <ros/ros.h>
+#include <sensor_msgs/Temperature.h>
+#include <geometry_msgs/Twist.h>
+#include <geometry_msgs/PoseStamped.h>
+#include <nav_msgs/Odometry.h>
+#include <tf2_eigen/tf2_eigen.h>
+#include <tf2/LinearMath/Quaternion.h>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.h>
+
+using namespace std;
+
+namespace wfc {
+
+/*!
+ * Main class for the node to handle the ROS interfacing.
+ */
+class WaypointsFollowerControl
+{
+ public:
+    /*!
+   * Constructor.
+   * @param nodeHandle the ROS node handle.
+   */
+  WaypointsFollowerControl(ros::NodeHandle& nodeHandle);
+
+  /*!
+   * Destructor.
+   */
+    virtual ~WaypointsFollowerControl();
+
+ private:
+  /*!
+   * Reads and verifies the ROS parameters.
+   * @return true if successful.
+   */
+  bool readParameters();
+
+  /*!
+   * ROS topic callback method.
+   * @param message the received message.
+   */
+    void goalCallback(const geometry_msgs::PoseStamped& msg);
+
+    /*!
+   * ROS topic callback method.
+   * @param message the received message.
+   */
+    void odomCallback(const nav_msgs::Odometry& msg);
+
+//   /*!
+//    * ROS service server callback.
+//    * @param request the request of the service.
+//    * @param response the provided response.
+//    * @return true if successful, false otherwise.
+//    */
+//   bool serviceCallback(std_srvs::Trigger::Request& request,
+//                        std_srvs::Trigger::Response& response);
+
+  //! ROS node handle.
+    ros::NodeHandle& nodeHandle_;
+
+  //! ROS topic subscriber.
+    ros::Subscriber subscriber_;
+
+    ros::Publisher cmd_publisher_;
+
+  //! ROS topic name to subscribe to.
+    std::string subscriberTopic_;
+    std::string cmdTopic_;
+
+    Eigen::Vector3d curr_xyyaw_in_odom_;
+    Eigen::Vector3d goal_xyyaw_in_odom_;    
+    
+    //! Algorithm computation object.
+    PID controller_;
+
+    ros::Time prev_time_;
+};
+
+} /* namespace */
