@@ -8,6 +8,9 @@ int main(int argc, char** argv)
 
   wfc::WaypointsFollowerControl wfc(nodeHandle);
 
-  ros::spin();
+  ros::AsyncSpinner spinner(0);
+  spinner.start();
+  ros::waitForShutdown();
+
   return 0;
 }

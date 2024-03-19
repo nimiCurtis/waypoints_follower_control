@@ -176,6 +176,39 @@ include_directories(
 #   ${catkin_LIBRARIES}
 # )
 
+
+## Declare a cpp library
+add_library(${PROJECT_NAME}_core
+  src/PID.cpp
+)
+target_compile_features(${PROJECT_NAME}_core INTERFACE cxx_std_11)
+
+## Declare cpp executables
+add_executable(${PROJECT_NAME}
+  src/wfc_node.cpp
+  src/WayPointsFollower.cpp
+)
+target_compile_features(${PROJECT_NAME} INTERFACE cxx_std_11)
+
+## Add dependencies to exported targets, like ROS msgs or srvs
+add_dependencies(${PROJECT_NAME}_core
+  ${catkin_EXPORTED_TARGETS}
+)
+
+add_dependencies(${PROJECT_NAME}
+  ${catkin_EXPORTED_TARGETS}
+)
+
+## Specify libraries to link executable targets against
+target_link_libraries(${PROJECT_NAME}_core
+  ${catkin_LIBRARIES}
+)
+
+target_link_libraries(${PROJECT_NAME}
+  ${PROJECT_NAME}_core
+  ${catkin_LIBRARIES}
+)
+
 #############
 ## Install ##
 #############
@@ -217,6 +250,30 @@ include_directories(
 #   # myfile2
 #   DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
 # )
+
+# Mark executables and/or libraries for installation
+install(
+  TARGETS ${PROJECT_NAME} ${PROJECT_NAME}_core
+  ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+  LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+  RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+)
+
+# Mark cpp header files for installation
+install(
+  DIRECTORY include/${PROJECT_NAME}/
+  DESTINATION ${CATKIN_PACKAGE_INCLUDE_DESTINATION}
+  FILES_MATCHING PATTERN "*.hpp"
+  # FILES_MATCHING PATTERN "*.h"
+)
+
+# Mark other files for installation
+# install(
+#   DIRECTORY doc
+#   DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
+# )
+
+
 
 #############
 ## Testing ##

@@ -1,7 +1,7 @@
 #pragma once
 
 #include "PID.hpp"
-#include <math.hpp>
+// #include <math.hpp>
 
 // ROS
 #include <ros/ros.h>
@@ -39,9 +39,9 @@ class WaypointsFollowerControl
    * Reads and verifies the ROS parameters.
    * @return true if successful.
    */
-  bool readParameters();
+    bool readParameters();
 
-  /*!
+    /*!
    * ROS topic callback method.
    * @param message the received message.
    */
@@ -65,22 +65,38 @@ class WaypointsFollowerControl
   //! ROS node handle.
     ros::NodeHandle& nodeHandle_;
 
+
   //! ROS topic subscriber.
-    ros::Subscriber subscriber_;
+    ros::Subscriber goal_subscriber_;
+    ros::Subscriber odom_subscriber_;
 
     ros::Publisher cmd_publisher_;
 
   //! ROS topic name to subscribe to.
-    std::string subscriberTopic_;
+    std::string goalTopic_;
     std::string cmdTopic_;
+    std::string odomTopic_;
 
     Eigen::Vector3d curr_xyyaw_in_odom_;
     Eigen::Vector3d goal_xyyaw_in_odom_;    
     
     //! Algorithm computation object.
-    PID controller_;
+    PID* controller_;
 
     ros::Time prev_time_;
+
+    double ang_Kp_;
+    double lin_Kp_;
+
+    double lin_vel_max_ ;
+    double lin_vel_min_ ;
+
+    double ang_vel_max_ ;
+    double ang_vel_min_ ;
+
+    double rotate_dist_threshold_;
+    
+
 };
 
 } /* namespace */

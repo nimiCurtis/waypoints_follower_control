@@ -1,0 +1,20 @@
+
+# ROS topics
+topics:
+  odom_topic: /turtlebot/odom
+  goal_topic: /goal_pose
+  cmd_topic: /turtlebot/cmd_vel
+
+# control
+control:
+  rotate_dist_threshold: 0.05 # [m]
+  linear:
+    max_vel: 0.25 # change depend on robot config
+    min_vel: -0.1
+    kp: 1000.
+
+  angular:
+    max_vel: 2.8
+    min_vel: -2.8
+    kp: 800.
+

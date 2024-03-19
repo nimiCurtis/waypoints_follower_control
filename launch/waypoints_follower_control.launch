@@ -1,0 +1,11 @@
+<launch>
+
+
+    <env name="ROSCONSOLE_FORMAT" value="[${severity}][${node}]: ${message}"/>
+
+    <!-- Launch ROS Package Template Node -->
+    <node pkg="waypoints_follower_control" type="waypoints_follower_control" name="waypoints_follower_control" output="screen">
+        <rosparam command="load" file="$(find waypoints_follower_control)/config/wfc_params.yaml" />
+    </node>
+
+</launch>
