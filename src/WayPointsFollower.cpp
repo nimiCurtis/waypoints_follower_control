@@ -115,7 +115,8 @@ void WaypointsFollowerControl::odomCallback(const nav_msgs::Odometry& msg)
     // Calculate the time difference
     ros::Duration time_difference = curr_time - prev_time_;
     double dt = time_difference.toSec();
-
+    prev_time_ = curr_time;
+    
     Eigen::Vector2d control_cmd;
     controller_->getControl(curr_xyyaw_in_odom_,dt,control_cmd);
 
