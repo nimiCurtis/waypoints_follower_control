@@ -3,7 +3,7 @@
 
 int main(int argc, char** argv)
 {
-  ros::init(argc, argv, "ros_package_template");
+  ros::init(argc, argv, "waypoints_follower_control");
   ros::NodeHandle nodeHandle("~");
 
   wfc::WaypointsFollowerControl wfc(nodeHandle);

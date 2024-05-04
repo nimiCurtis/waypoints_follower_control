@@ -53,14 +53,14 @@ class WaypointsFollowerControl
    */
     void odomCallback(const nav_msgs::Odometry& msg);
 
-//   /*!
-//    * ROS service server callback.
-//    * @param request the request of the service.
-//    * @param response the provided response.
-//    * @return true if successful, false otherwise.
-//    */
-//   bool serviceCallback(std_srvs::Trigger::Request& request,
-//                        std_srvs::Trigger::Response& response);
+  //   /*!
+  //    * ROS service server callback.
+  //    * @param request the request of the service.
+  //    * @param response the provided response.
+  //    * @return true if successful, false otherwise.
+  //    */
+  //   bool serviceCallback(std_srvs::Trigger::Request& request,
+  //                        std_srvs::Trigger::Response& response);
 
   //! ROS node handle.
     ros::NodeHandle& nodeHandle_;
