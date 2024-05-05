@@ -40,8 +40,8 @@ class GoalGenerator:
         # self.capture_timer = rospy.Timer(self.capture_interval, self.capture_image)
 
         
-        
-        model_name = "pilot-turtle-static-follower_2024-05-01_23-28-38"
+        # pilot-turtle-static-follower_2024-05-01_23-28-38 | pilot-turtle-static-follower_2024-05-02_12-38-32
+        model_name = "pilot-turtle-static-follower_2024-05-02_12-38-32"
         data_cfg, _, policy_model_cfg, encoder_model_cfg, device = get_inference_config(model_name=model_name)
         robot = "turtlebot"
         self.image_size = data_cfg.image_size
@@ -92,44 +92,6 @@ class GoalGenerator:
 
             if len(self.target_context_queue) > self.target_context_size:
                 self.target_context_queue.pop(0)
-        
-            # if(len(self.context_queue)>=self.context_size and len(self.target_context_queue)>=self.target_context_size):
-                    
-            #     context_queue_tensor = transform_images(self.context_queue[-self.context_size:], image_size=self.image_size)
-
-                
-            #     self.target_context_queue = self.target_context_queue[-self.target_context_size:]
-                
-            #     if len(self.target_context_queue) == 1:
-            #         self.target_context_queue = self.target_context_queue[-1]
-
-            #     target_context_queue_tensor = from_numpy(np.array(self.target_context_queue))
-            #     goal_to_target_tensor = from_numpy(self.goal_to_target)
-                
-            #     t = tic()
-            #     waypoint = self.model(context_queue_tensor,target_context_queue_tensor, goal_to_target_tensor)
-            #     dt_infer = toc(t)
-            #     print(f"inference time: {dt_infer}[sec]")
-
-            #     dx, dy, hx, hy = waypoint
-
-            #     yaw = self.clip_angle(np.arctan2(hy,hx))
-                
-                
-            #     pose_stamped = self.create_pose_stamped(dx, dy, yaw, 'base_footprint', self.seq, rospy.Time.now())
-            #     self.seq+=1
-            #     try:
-            #         transform = self.tf_buffer.lookup_transform("odom", "base_footprint", rospy.Time())
-            #         transformed_pose = do_transform_pose(pose_stamped, transform)
-            #     except Exception as e:
-            #         rospy.logwarn("Failed to transform pose: %s", str(e))
-            #         print("hi")
-            #     # Publish the transformed pose
-            #     # self.goal_pub.publish(pose_stamped)
-
-            #     self.goal_pub.publish(transformed_pose)
-            #     dt_process = toc(t)
-            #     print(f"process time: {dt_process}[sec]")
 
 
     def clip_angle(self,theta) -> float:
@@ -173,15 +135,14 @@ class GoalGenerator:
             
             if(len(self.context_queue)>=self.context_size and len(self.target_context_queue)>=self.target_context_size):
                 
+                # context
                 context_queue_tensor = transform_images(self.context_queue[-self.context_size:], image_size=self.image_size)
 
-                
+                # target context
                 target_context_queue = self.target_context_queue[-self.target_context_size:]
+                target_context_queue_tensor = from_numpy(np.array(target_context_queue)).reshape(-1)
                 
-                if len(target_context_queue) == 1:
-                    target_context_queue = target_context_queue[-1]
-
-                target_context_queue_tensor = from_numpy(np.array(target_context_queue))
+                # goal pos
                 goal_to_target_tensor = from_numpy(self.goal_to_target)
                 
                 t = tic()
@@ -193,11 +154,11 @@ class GoalGenerator:
 
                 yaw = self.clip_angle(np.arctan2(hy,hx))
                 
-                pose_stamped = self.create_pose_stamped(dx, dy, yaw, 'base_link', seq, rospy.Time.now())
+                pose_stamped = self.create_pose_stamped(dx, dy, yaw, 'base_footprint', seq, rospy.Time.now())
                 seq+=1
 
                 try:
-                    transform = self.tf_buffer.lookup_transform("odom", "base_link", rospy.Time())
+                    transform = self.tf_buffer.lookup_transform("odom", "base_footprint", rospy.Time()) # base_link | base_footprint
                     transformed_pose = do_transform_pose(pose_stamped, transform)
                 except Exception as e:
                     rospy.logwarn("Failed to transform pose: %s", str(e))
