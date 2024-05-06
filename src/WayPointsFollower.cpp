@@ -25,8 +25,8 @@ WaypointsFollowerControl::WaypointsFollowerControl(ros::NodeHandle& nodeHandle)
     // PID controller(lin_Kp_, lin_vel_max_, lin_vel_min_,
     //                     ang_Kp_, ang_vel_max_, ang_vel_min_,
     //                     rotate_dist_threshold_);
-    controller_ = new PID(lin_Kp_, lin_vel_max_, lin_vel_min_,
-                            ang_Kp_, ang_vel_max_, ang_vel_min_,
+    controller_ = new PID(lin_Kp_, lin_Ki_, lin_Kd_, lin_vel_max_, lin_vel_min_,
+                            ang_Kp_, ang_Ki_, ang_Kd_,ang_vel_max_, ang_vel_min_,
                             rotate_dist_threshold_);
 
     ROS_INFO("Successfully launched node.");
@@ -45,10 +45,14 @@ bool WaypointsFollowerControl::readParameters()
     if (!nodeHandle_.getParam("control/rotate_dist_threshold", rotate_dist_threshold_)) return false;
 
     if (!nodeHandle_.getParam("control/angular/kp", ang_Kp_)) return false;
+    if (!nodeHandle_.getParam("control/angular/ki", ang_Ki_)) return false; // Load angular Ki
+    if (!nodeHandle_.getParam("control/angular/kd", ang_Kd_)) return false; // Load angular Kd
     if (!nodeHandle_.getParam("control/angular/max_vel", ang_vel_max_)) return false;
     if (!nodeHandle_.getParam("control/angular/min_vel", ang_vel_min_)) return false;
 
     if (!nodeHandle_.getParam("control/linear/kp", lin_Kp_)) return false;
+    if (!nodeHandle_.getParam("control/linear/ki", lin_Ki_)) return false; // Load linear Ki
+    if (!nodeHandle_.getParam("control/linear/kd", lin_Kd_)) return false; // Load linear Kd
     if (!nodeHandle_.getParam("control/linear/max_vel", lin_vel_max_)) return false;
     if (!nodeHandle_.getParam("control/linear/min_vel", lin_vel_min_)) return false;
 
@@ -63,12 +67,16 @@ bool WaypointsFollowerControl::readParameters()
     ROS_INFO_STREAM("  * Linear vel:");
     ROS_INFO_STREAM("      * max_vel: " << lin_vel_max_ << " | min_vel: " << lin_vel_min_);
     ROS_INFO_STREAM("      * kp: " << lin_Kp_);
+    ROS_INFO_STREAM("      * ki: " << lin_Ki_);
+    ROS_INFO_STREAM("      * kd: " << lin_Kd_);
+    
     ROS_INFO_STREAM("  * Angular vel:");
     ROS_INFO_STREAM("      * max_vel: " << ang_vel_max_ << " | min_vel: " << ang_vel_min_);
     ROS_INFO_STREAM("      * kp: " << ang_Kp_);
+    ROS_INFO_STREAM("      * ki: " << ang_Ki_);
+    ROS_INFO_STREAM("      * kd: " << ang_Kd_);
 
     ROS_INFO_STREAM("**************************");
-
 
     return true;
 }

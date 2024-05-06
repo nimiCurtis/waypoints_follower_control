@@ -1,0 +1,16 @@
+robot: turtlebot
+
+frames:
+  odom_frame: odom
+  base_frame: base_link
+  
+model: 
+  model_name: pilot-turtle-static-follower_2024-05-02_12-38-32
+  frame_rate: 6 # NOTE: please pay atteniton that this value is similar to the sampling rate
+                # of the data collected to train the policy
+  wpt_i: 2
+
+topics: 
+  image_topic: /zedm/zed_node/depth/depth_registered
+  obj_det_topic: /obj_detect_publisher_node/object
+

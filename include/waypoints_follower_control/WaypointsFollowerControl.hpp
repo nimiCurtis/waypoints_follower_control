@@ -1,7 +1,6 @@
 #pragma once
 
 #include "PID.hpp"
-// #include <math.hpp>
 
 // ROS
 #include <ros/ros.h>
@@ -86,7 +85,12 @@ class WaypointsFollowerControl
     ros::Time prev_time_;
 
     double ang_Kp_;
+    double ang_Ki_;
+    double ang_Kd_;
+    
     double lin_Kp_;
+    double lin_Ki_;
+    double lin_Kd_;
 
     double lin_vel_max_ ;
     double lin_vel_min_ ;
@@ -95,6 +99,8 @@ class WaypointsFollowerControl
     double ang_vel_min_ ;
 
     double rotate_dist_threshold_;
+
+
     
 
 };

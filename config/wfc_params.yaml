@@ -5,16 +5,19 @@ topics:
   goal_topic: /goal_pose
   cmd_topic: /turtlebot/cmd_vel
 
-# control
+# Control
 control:
-  rotate_dist_threshold: 0.05 # [m]
+  rotate_dist_threshold: 0.1 # [m]
   linear:
-    max_vel: 0.25 # change depend on robot config
+    max_vel: 0.22 # change depend on robot config
     min_vel: -0.1
-    kp: 0.5
+    kp: 0.4
+    ki: 0.001
+    kd: 0.01
 
   angular:
-    max_vel: 2.8
-    min_vel: -2.8
-    kp: 0.2
-
+    max_vel: 1.8
+    min_vel: -1.8
+    kp: 0.3
+    ki: 0.001
+    kd: 0.001

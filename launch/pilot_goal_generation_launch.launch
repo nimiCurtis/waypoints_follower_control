@@ -1,0 +1,9 @@
+<launch>
+    <env name="ROSCONSOLE_FORMAT" value="[${severity}][${time}][${node}]: ${message}"/>
+
+    <!-- Launch ROS Package Template Node -->
+    <node pkg="waypoints_follower_control" type="pilot_goal_generation_publisher.py" name="pilot_goal_generation_publisher" output="screen">
+        <rosparam command="load" file="$(find waypoints_follower_control)/config/pilot_goal_generation_params.yaml" />
+    </node>
+
+</launch>
