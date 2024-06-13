@@ -136,8 +136,8 @@ class GoalGenerator:
         self.model = PilotPlanner(data_cfg=data_cfg,
                                 policy_model_cfg=policy_model_cfg,
                                 encoder_model_cfg=encoder_model_cfg,
-                                # robot=params["robot"],
-                                robot="turtlebot",
+                                robot=params["robot"],
+                                # robot="nimrod",
                                 wpt_i=params["wpt_i"],
                                 frame_rate=params["frame_rate"])
 
