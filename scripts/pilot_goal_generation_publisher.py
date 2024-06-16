@@ -15,7 +15,7 @@ import message_filters
 from zed_interfaces.msg import ObjectsStamped
 
 from pilot_deploy.inference import PilotPlanner, get_inference_config
-from pilot_utils.transforms import transform_images
+from pilot_utils.transforms import transform_images, ObservationTransform
 from pilot_utils.deploy.deploy_utils import msg_to_pil
 from pilot_utils.utils import tic, toc, from_numpy
 
@@ -118,7 +118,7 @@ class GoalGenerator:
         self.tf_listener = TransformListener(self.tf_buffer)
 
         # Load the pilot model
-        data_cfg, _, policy_model_cfg, encoder_model_cfg, device = get_inference_config(params["model_name"])
+        data_cfg, datasets_cfg, policy_model_cfg, encoder_model_cfg, device = get_inference_config(params["model_name"])
         self.image_size = data_cfg.image_size
 
         # Initialize queues for context and target data
@@ -128,7 +128,8 @@ class GoalGenerator:
         self.target_context_queue = []
         self.context_size = data_cfg.context_size + 1
         self.target_context_size = self.context_size if data_cfg.target_context else 1
-
+        self.max_depth = datasets_cfg.max_depth
+        
         # Configure device for PyTorch
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu") if device == "cuda" else "cpu"
 
@@ -136,11 +137,12 @@ class GoalGenerator:
         self.model = PilotPlanner(data_cfg=data_cfg,
                                 policy_model_cfg=policy_model_cfg,
                                 encoder_model_cfg=encoder_model_cfg,
-                                # robot=params["robot"],
-                                robot="nimrod",
+                                robot=params["robot"],
                                 wpt_i=params["wpt_i"],
                                 frame_rate=params["frame_rate"])
 
+        self.transform = ObservationTransform(data_cfg=data_cfg).get_transform("test")
+        
         self.model.load(params["model_name"])
         self.model.to(device=device)
 
@@ -216,7 +218,7 @@ class GoalGenerator:
         Stores the latest received messages.
         """
         # rospy.loginfo("Image and object detection data synchronized.")
-        self.latest_image = msg_to_pil(image_msg)
+        self.latest_image = msg_to_pil(image_msg, max_depth=self.max_depth)
         self.latest_obj_det = list(obj_det_msg.objects[0].position)[:2] if obj_det_msg.objects else None
         self.new_data_available = True
 
@@ -270,7 +272,7 @@ class GoalGenerator:
                     len(self.target_context_queue) >= self.target_context_size):
 
                         # Prepare tensors for context and target data
-                        context_queue_tensor = transform_images(self.context_queue[-self.context_size:], image_size=self.image_size)
+                        context_queue_tensor = transform_images(self.context_queue[-self.context_size:], self.transform)
                         target_context_queue = self.target_context_queue[-self.target_context_size:]
                         target_context_queue_tensor = from_numpy(np.array(target_context_queue)).reshape(-1)
                         goal_to_target_tensor = from_numpy(self.goal_to_target)
@@ -325,14 +327,16 @@ class GoalGeneratorNoCond:
         self.tf_listener = TransformListener(self.tf_buffer)
 
         # Load the pilot model
-        data_cfg, _, policy_model_cfg, encoder_model_cfg, device = get_inference_config(params["model_name"])
+        data_cfg, datasets_cfg, policy_model_cfg, encoder_model_cfg, device = get_inference_config(params["model_name"])
         self.image_size = data_cfg.image_size
 
         # Initialize queues for context and target data
         self.latest_image = None
         self.context_queue = []
         self.context_size = data_cfg.context_size + 1
-
+        
+        self.max_depth = datasets_cfg.max_depth
+        
         # Configure device for PyTorch
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu") if device == "cuda" else "cpu"
 
@@ -340,10 +344,11 @@ class GoalGeneratorNoCond:
         self.model = PilotPlanner(data_cfg=data_cfg,
                                 policy_model_cfg=policy_model_cfg,
                                 encoder_model_cfg=encoder_model_cfg,
-                                robot="turtlebot",
+                                robot=params["robot"],
                                 wpt_i=params["wpt_i"],
                                 frame_rate=params["frame_rate"])
 
+        self.transform = 
         self.model.load(params["model_name"])
         self.model.to(device=device)
 
@@ -391,13 +396,13 @@ class GoalGeneratorNoCond:
         rospy.loginfo("**************************")
         
         return params
-    
+
     def shutdownhook(self):
         rospy.logwarn("Shutting down GoalGenerator.")
         # Additional cleanup actions can be added here.
 
     def image_callback(self, image_msg: Image):
-        self.latest_image = msg_to_pil(image_msg)
+        self.latest_image = msg_to_pil(image_msg, max_depth=self.max_depth)
         self.new_data_available = True
 
     def maintain_queues(self):
