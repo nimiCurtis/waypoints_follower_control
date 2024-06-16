@@ -136,8 +136,8 @@ class GoalGenerator:
         self.model = PilotPlanner(data_cfg=data_cfg,
                                 policy_model_cfg=policy_model_cfg,
                                 encoder_model_cfg=encoder_model_cfg,
-                                robot=params["robot"],
-                                # robot="nimrod",
+                                # robot=params["robot"],
+                                robot="nimrod",
                                 wpt_i=params["wpt_i"],
                                 frame_rate=params["frame_rate"])
 
@@ -296,7 +296,7 @@ class GoalGenerator:
                             rospy.logwarn(f"Failed to transform pose: {str(e)}")
                             continue
                         
-                        rospy.loginfo_throttle(5, f"Planner running. Goal genretaed ([dx,dy,yaw]): [{dx},{dy},{yaw}] ")
+                        rospy.loginfo_throttle(3, f"Planner running. Goal genretaed ([dx,dy,yaw]): [{dx},{dy},{yaw}] ")
                         # Publish the transformed goal pose
                         self.goal_pub.publish(transformed_pose)
                         # dt_process = toc(t)
@@ -304,8 +304,142 @@ class GoalGenerator:
 
             self.rate.sleep()
 
+class GoalGeneratorNoCond:
+    def __init__(self):
+        rospy.init_node('pilot_goal_generation_publisher', anonymous=True)
+        
+        # Initialize parameters
+        params = self.load_parameters()
+
+        # Subscribe to the image topic
+        self.image_sub = rospy.Subscriber(params["image_topic"], Image, self.image_callback)
+
+        # Set up publishers
+        self.path_pub = rospy.Publisher('/poses_path', Path, queue_size=10)
+        self.goal_pub = rospy.Publisher('/goal_pose', PoseStamped, queue_size=10)
+
+        self.seq = 1
+
+        # Initialize TF listener for frame transformation
+        self.tf_buffer = Buffer()
+        self.tf_listener = TransformListener(self.tf_buffer)
+
+        # Load the pilot model
+        data_cfg, _, policy_model_cfg, encoder_model_cfg, device = get_inference_config(params["model_name"])
+        self.image_size = data_cfg.image_size
+
+        # Initialize queues for context and target data
+        self.latest_image = None
+        self.context_queue = []
+        self.context_size = data_cfg.context_size + 1
+
+        # Configure device for PyTorch
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu") if device == "cuda" else "cpu"
+
+        # Initialize pilot model
+        self.model = PilotPlanner(data_cfg=data_cfg,
+                                policy_model_cfg=policy_model_cfg,
+                                encoder_model_cfg=encoder_model_cfg,
+                                robot="turtlebot",
+                                wpt_i=params["wpt_i"],
+                                frame_rate=params["frame_rate"])
+
+        self.model.load(params["model_name"])
+        self.model.to(device=device)
+
+        # Set up the processing rate
+        self.rate = rospy.Rate(params["frame_rate"])
+        self.goal_to_target = np.array([1.0, 0.0])
+
+        self.odom_frame = params["odom_frame"]
+        self.base_frame = params["base_frame"]
+
+        self.new_data_available = False  # Flag to indicate new data is ready to be processed
+        
+        rospy.on_shutdown(self.shutdownhook)
+        rospy.loginfo("GoalGenerator initialized successfully.")
+
+    def load_parameters(self):
+        node_name = rospy.get_name()
+        
+        # Load parameters from the ROS parameter server
+        params = {
+            "robot": rospy.get_param(node_name + "/robot",  default="turtlebot"),
+            "model_name": rospy.get_param(node_name + "/model/model_name", default="pilot-turtle-static-follower_2024-05-02_12-38-32"),
+            "frame_rate": rospy.get_param(node_name + "/model/frame_rate", default=6),
+            "wpt_i": rospy.get_param(node_name + "/model/wpt_i", default=2),
+            "image_topic": rospy.get_param(node_name + "/topics/image_topic", default="/zedm/zed_node/depth/depth_registered"),
+            "odom_frame": rospy.get_param(node_name + "/frames/odom_frame", default="odom"),
+            "base_frame": rospy.get_param(node_name + "/frames/base_frame", default="base_link"),
+        }
+        
+        # Log the loaded parameters in a structured way
+        rospy.loginfo(f"******* {node_name} Parameters *******")
+        rospy.loginfo("* Robot: " + params["robot"])
+        
+        rospy.loginfo("* Model:")
+        rospy.loginfo("  * model_name: " + params["model_name"])
+        rospy.loginfo("  * frame_rate: " + str(params["frame_rate"]))
+        rospy.loginfo("  * wpt_i: " + str(params["wpt_i"]))
+        
+        rospy.loginfo("* Topics:")
+        rospy.loginfo("  * image_topic: " + params["image_topic"])
+        
+        rospy.loginfo("* Frames:")
+        rospy.loginfo("* odom_frame: " + params["odom_frame"])
+        
+        rospy.loginfo("**************************")
+        
+        return params
+    
+    def shutdownhook(self):
+        rospy.logwarn("Shutting down GoalGenerator.")
+        # Additional cleanup actions can be added here.
+
+    def image_callback(self, image_msg: Image):
+        self.latest_image = msg_to_pil(image_msg)
+        self.new_data_available = True
+
+    def maintain_queues(self):
+        self.context_queue.append(self.latest_image)
+        if len(self.context_queue) > self.context_size:
+            self.context_queue.pop(0)
+        self.new_data_available = False
+
+    def generate(self):
+        seq = 0
+
+        while not rospy.is_shutdown():
+            current_time = rospy.Time.now()
+
+            if self.new_data_available:
+                self.maintain_queues()
+                
+                if len(self.context_queue) >= self.context_size:
+                    context_queue_tensor = transform_images(self.context_queue[-self.context_size:], image_size=self.image_size)
+                    goal_to_target_tensor = from_numpy(self.goal_to_target)
+
+                    waypoint = self.model(context_queue_tensor, curr_rel_pos_to_target = None, goal_rel_pos_to_target =  goal_to_target_tensor)
+                    dx, dy, hx, hy = waypoint
+                    yaw = clip_angle(np.arctan2(hy, hx))
+
+                    pose_stamped = create_pose_stamped(dx, dy, yaw, self.base_frame, seq, current_time)
+                    seq += 1
+
+                    try:
+                        transform = self.tf_buffer.lookup_transform(self.odom_frame, self.base_frame, rospy.Time.now(), rospy.Duration(0.2))
+                        transformed_pose = do_transform_pose(pose_stamped, transform)
+                    except Exception as e:
+                        rospy.logwarn(f"Failed to transform pose: {str(e)}")
+                        continue
+                        
+                    rospy.loginfo_throttle(3, f"Planner running. Goal generated ([dx,dy,yaw]): [{dx},{dy},{yaw}] ")
+                    self.goal_pub.publish(transformed_pose)
+
+            self.rate.sleep()
+
 if __name__ == '__main__':
 
     # Start node
-    goal_gen = GoalGenerator()
+    goal_gen = GoalGeneratorNoCond()
     goal_gen.generate()
