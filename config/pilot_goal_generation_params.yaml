@@ -11,6 +11,7 @@ model:
   # model_name: go-to-the-pic_2024-06-15_18-36-23
   frame_rate: 6 # NOTE: please pay atteniton that this value is similar to the sampling rate
                 # of the data collected to train the policy
+  pub_rate: 5
   wpt_i: 4
 
 topics: 
