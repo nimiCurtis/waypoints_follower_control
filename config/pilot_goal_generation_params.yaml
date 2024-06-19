@@ -1,4 +1,4 @@
-robot: nimrod
+robot: turtlebot
 
 frames:
   odom_frame: odom
@@ -6,12 +6,12 @@ frames:
 
 model: 
   # model_name: pilot-turtle-static-follower_2024-05-02_12-38-32
-  model_name: pilot-human2robot-dynamic-follower_2024-06-15_10-48-28
+  model_name: pilot-go-to-the-picture-pidiff_2024-06-19_16-13-53
   # model_name: pilot-human2robot-dynamic-follower_2024-06-13_13-38-59
   # model_name: go-to-the-pic_2024-06-15_18-36-23
   frame_rate: 6 # NOTE: please pay atteniton that this value is similar to the sampling rate
                 # of the data collected to train the policy
-  wpt_i: 2
+  wpt_i: 4
 
 topics: 
   image_topic: /zedm/zed_node/depth/depth_registered

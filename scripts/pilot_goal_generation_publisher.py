@@ -348,10 +348,11 @@ class GoalGeneratorNoCond:
                                 wpt_i=params["wpt_i"],
                                 frame_rate=params["frame_rate"])
 
-        self.transform = 
         self.model.load(params["model_name"])
         self.model.to(device=device)
 
+        self.transform = ObservationTransform(data_cfg=data_cfg).get_transform("test")
+        
         # Set up the processing rate
         self.rate = rospy.Rate(params["frame_rate"])
         self.goal_to_target = np.array([1.0, 0.0])
@@ -421,7 +422,7 @@ class GoalGeneratorNoCond:
                 self.maintain_queues()
                 
                 if len(self.context_queue) >= self.context_size:
-                    context_queue_tensor = transform_images(self.context_queue[-self.context_size:], image_size=self.image_size)
+                    context_queue_tensor = transform_images(self.context_queue[-self.context_size:], transform=self.transform)
                     goal_to_target_tensor = from_numpy(self.goal_to_target)
 
                     waypoint = self.model(context_queue_tensor, curr_rel_pos_to_target = None, goal_rel_pos_to_target =  goal_to_target_tensor)
@@ -438,7 +439,7 @@ class GoalGeneratorNoCond:
                         rospy.logwarn(f"Failed to transform pose: {str(e)}")
                         continue
                         
-                    rospy.loginfo_throttle(3, f"Planner running. Goal generated ([dx,dy,yaw]): [{dx},{dy},{yaw}] ")
+                    rospy.loginfo_throttle(1, f"Planner running. Goal generated ([dx,dy,yaw]): [{dx},{dy},{yaw}] ")
                     self.goal_pub.publish(transformed_pose)
 
             self.rate.sleep()
