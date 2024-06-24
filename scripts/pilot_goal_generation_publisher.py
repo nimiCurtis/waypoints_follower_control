@@ -412,8 +412,6 @@ class GoalGeneratorNoCond:
         rospy.logwarn("Shutting down GoalGenerator.")
         # Additional cleanup actions can be added here.
 
-
-
     def image_callback(self, image_msg: Image):
         current_time = rospy.Time.now()
         dt_collect = (current_time - self.last_collect_time).to_sec()
@@ -421,7 +419,7 @@ class GoalGeneratorNoCond:
         if dt_collect >= 1.0 / self.frame_rate:
             self.last_collect_time = current_time
             # Log collection timing
-            rospy.loginfo(f"Image collected after {dt_collect} seconds.")
+            # rospy.loginfo(f"Image collected after {dt_collect} seconds.")
 
             # Proceed with handling the image as before
             self.latest_image = msg_to_pil(image_msg, max_depth=self.max_depth)
@@ -435,15 +433,15 @@ class GoalGeneratorNoCond:
         if len(self.context_queue) >= self.context_size and dt_pub >= 1.0 / self.pub_rate:
             self.last_pub_time = current_time
             # Log publishing timing
-            rospy.loginfo(f"Publishing goal after {dt_pub} seconds.")
+            # rospy.loginfo(f"Publishing goal after {dt_pub} seconds.")
 
             # Generate and publish goal pose as before
             trasformed_context_queue = transform_images(self.context_queue[-self.context_size:], transform=self.transform)
             
-            t = tic()
+            # t = tic()
             waypoint = self.model(trasformed_context_queue)
-            dt_infer = toc(t)
-            rospy.loginfo(f"Inferencing time: {dt_infer} seconds.")
+            # dt_infer = toc(t)
+            # rospy.loginfo(f"Inferencing time: {dt_infer} seconds.")
 
             
             dx, dy, hx, hy = waypoint
