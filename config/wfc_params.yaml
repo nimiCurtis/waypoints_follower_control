@@ -11,13 +11,13 @@ control:
   linear:
     max_vel: 0.22 # change depend on robot config
     min_vel: -0.1
-    kp: 0.4
+    kp: 0.35
     ki: 0.001
-    kd: 0.01
+    kd: 0.001
 
   angular:
     max_vel: 1.8
     min_vel: -1.8
-    kp: 0.3
+    kp: 0.2
     ki: 0.001
     kd: 0.001

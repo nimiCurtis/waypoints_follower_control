@@ -319,7 +319,9 @@ class GoalGeneratorNoCond:
         self.max_depth = datasets_cfg.max_depth
 
         # Subscribe to the image topic
-        self.image_sub = rospy.Subscriber(params["image_topic"], Image, self.image_callback)
+        # Timing variables
+        self.last_collect_time = rospy.Time.now()
+        self.last_pub_time = rospy.Time.now()
 
         # Set up publishers
         self.path_pub = rospy.Publisher('/poses_path', Path, queue_size=10)
@@ -331,15 +333,11 @@ class GoalGeneratorNoCond:
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer)
 
-
-
         # Initialize queues for context and target data
         self.latest_image = None
         self.context_queue = []
         self.context_size = data_cfg.context_size + 1
-        
-        self.new_data_available = False
-        
+                
         # Configure device for PyTorch
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu") if device == "cuda" else "cpu"
 
@@ -354,6 +352,8 @@ class GoalGeneratorNoCond:
         self.model.load(params["model_name"])
         self.model.to(device=device)
 
+        # self.goal_to_target = np.array([1.0, 0.0])
+
         self.transform = ObservationTransform(data_cfg=data_cfg).get_transform("test")
 
         # Set up the processing rate
@@ -362,10 +362,13 @@ class GoalGeneratorNoCond:
         self.rate = rospy.Rate(self.pub_rate)
         self.pub_counter = 0
 
-        self.goal_to_target = np.array([1.0, 0.0])
-
         self.odom_frame = params["odom_frame"]
         self.base_frame = params["base_frame"]
+
+        
+        self.seq = 0
+        
+        self.image_sub = rospy.Subscriber(params["image_topic"], Image, self.image_callback)
 
         rospy.on_shutdown(self.shutdownhook)
         rospy.loginfo("GoalGenerator initialized successfully.")
@@ -409,54 +412,53 @@ class GoalGeneratorNoCond:
         rospy.logwarn("Shutting down GoalGenerator.")
         # Additional cleanup actions can be added here.
 
+
+
     def image_callback(self, image_msg: Image):
-        self.latest_image = msg_to_pil(image_msg, max_depth=self.max_depth)
-        self.context_queue.append(self.latest_image)
-        if len(self.context_queue) > self.context_size:
-            self.context_queue.pop(0)
-        self.new_data_available = True
+        current_time = rospy.Time.now()
+        dt_collect = (current_time - self.last_collect_time).to_sec()
 
-    def generate(self):
-        seq = 0
+        if dt_collect >= 1.0 / self.frame_rate:
+            self.last_collect_time = current_time
+            # Log collection timing
+            rospy.loginfo(f"Image collected after {dt_collect} seconds.")
 
-        while not rospy.is_shutdown():
+            # Proceed with handling the image as before
+            self.latest_image = msg_to_pil(image_msg, max_depth=self.max_depth)
+            self.context_queue.append(self.latest_image)
             
+            if len(self.context_queue) > self.context_size:
+                self.context_queue.pop(0)
 
-            if self.new_data_available == True:
+        # Check if it's time to publish
+        dt_pub = (current_time - self.last_pub_time).to_sec()
+        if len(self.context_queue) >= self.context_size and dt_pub >= 1.0 / self.pub_rate:
+            self.last_pub_time = current_time
+            # Log publishing timing
+            rospy.loginfo(f"Publishing goal after {dt_pub} seconds.")
+
+            # Generate and publish goal pose as before
+            trasformed_context_queue = transform_images(self.context_queue[-self.context_size:], transform=self.transform)
+            
+            t = tic()
+            waypoint = self.model(trasformed_context_queue)
+            dt_infer = toc(t)
+            rospy.loginfo(f"Inferencing time: {dt_infer} seconds.")
+
+            
+            dx, dy, hx, hy = waypoint
+            yaw = clip_angle(np.arctan2(hy, hx))  
+            
+            pose_stamped = create_pose_stamped(dx, dy, yaw, self.base_frame, self.seq, current_time)
+            self.seq += 1
+            self.goal_pub.publish(pose_stamped)
+            rospy.loginfo_throttle(1, f"Planner running. Goal generated ([dx, dy, yaw]): [{dx}, {dy}, {yaw}]")
                 
-                if len(self.context_queue) >= self.context_size:
-                    context_queue_tensor = transform_images(self.context_queue[-self.context_size:], transform=self.transform)
-                    goal_to_target_tensor = from_numpy(self.goal_to_target)
 
-                    # Perform inference to predict the next waypoint
-                    t = tic()
-                    waypoint = self.model(context_queue_tensor, curr_rel_pos_to_target=None, goal_rel_pos_to_target=goal_to_target_tensor)
-
-                    dt_infer = toc(t)
-                    rospy.loginfo(f"Inference time: {dt_infer} seconds")
-                        
-                    dx, dy, hx, hy = waypoint
-                    yaw = clip_angle(np.arctan2(hy, hx))
-                    current_time = rospy.Time.now()
-                    pose_stamped = create_pose_stamped(dx, dy, yaw, self.base_frame, seq, current_time)
-                    seq += 1
-
-                    try:
-                        transform = self.tf_buffer.lookup_transform(self.odom_frame, self.base_frame, rospy.Time.now(), rospy.Duration(0.4))
-                        transformed_pose = do_transform_pose(pose_stamped, transform)
-                    except Exception as e:
-                        rospy.logwarn(f"Failed to transform pose: {str(e)}")
-                        continue
-                        
-                    rospy.loginfo_throttle(1, f"Planner running. Goal generated ([dx,dy,yaw]): [{dx},{dy},{yaw}] ")
-                    self.goal_pub.publish(transformed_pose)
-
-                self.new_data_available = False
-
-            self.pub_counter += 1
-            self.rate.sleep()
+            
 if __name__ == '__main__':
 
     # Start node
     goal_gen = GoalGeneratorNoCond()
-    goal_gen.generate()
+    rospy.spin()
+    # goal_gen.generate()
