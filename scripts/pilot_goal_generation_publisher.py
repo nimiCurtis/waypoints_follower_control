@@ -447,9 +447,21 @@ class GoalGeneratorNoCond:
             dx, dy, hx, hy = waypoint
             yaw = clip_angle(np.arctan2(hy, hx))  
             
+            
+            
+            
             pose_stamped = create_pose_stamped(dx, dy, yaw, self.base_frame, self.seq, current_time)
             self.seq += 1
-            self.goal_pub.publish(pose_stamped)
+            
+            # Transform the goal pose to the odom frame
+            try:
+                transform = self.tf_buffer.lookup_transform(self.odom_frame, self.base_frame, rospy.Time.now(), rospy.Duration(0.2))
+                transformed_pose = do_transform_pose(pose_stamped, transform)
+            except Exception as e:
+                rospy.logwarn(f"Failed to transform pose: {str(e)}")
+                pass
+            
+            self.goal_pub.publish(transformed_pose)
             rospy.loginfo_throttle(1, f"Planner running. Goal generated ([dx, dy, yaw]): [{dx}, {dy}, {yaw}]")
                 
 
