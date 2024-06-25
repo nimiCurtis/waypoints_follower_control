@@ -5,10 +5,9 @@ frames:
   base_frame: base_link
 
 model: 
-  # model_name: pilot-turtle-static-follower_2024-05-02_12-38-32
-  model_name: pilot-go-to-the-pic-pidiff_2024-06-24_16-34-14
-  # model_name: pilot-human2robot-dynamic-follower_2024-06-13_13-38-59
-  # model_name: go-to-the-pic_2024-06-15_18-36-23
+  model_name: pilot-go-to-the-pic-pidiff_2024-06-25_09-43-16
+  model_name: pilot-target-tracking_2024-06-24_20-34-53
+
   frame_rate: 6 # NOTE: please pay atteniton that this value is similar to the sampling rate
                 # of the data collected to train the policy
   pub_rate: 3
