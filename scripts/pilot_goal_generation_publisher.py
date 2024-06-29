@@ -201,7 +201,7 @@ class GoalGenerator(BaseGoalGenerator):
             self.last_collect_time = current_time
             self.latest_image = msg_to_pil(image_msg, max_depth=self.max_depth)
             self.context_queue.append(self.latest_image)
-            
+
             self.latest_obj_det = list(obj_det_msg.objects[0].position)[:2] if obj_det_msg.objects else [0,0]
             self.target_context_queue.append(self.latest_obj_det)
             
@@ -237,7 +237,6 @@ class GoalGenerator(BaseGoalGenerator):
                             # rospy.loginfo(f"Publishing goal after {dt_pub} seconds.")
                 transform = self.tf_buffer.lookup_transform(self.odom_frame, self.base_frame, rospy.Time.now(), rospy.Duration(0.2))
                 transformed_pose = do_transform_pose(pose_stamped, transform)
-                
 
 
                 rospy.loginfo(f"Publishing goal after {dt_pub} seconds.")
