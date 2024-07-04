@@ -17,7 +17,7 @@ from zed_interfaces.msg import ObjectsStamped
 from pilot_deploy.inference import PilotAgent, get_inference_config
 from pilot_utils.transforms import transform_images, ObservationTransform
 from pilot_utils.deploy.deploy_utils import msg_to_pil
-from pilot_utils.utils import tic, toc, from_numpy
+from pilot_utils.utils import tic, toc, from_numpy, normalize_data, xy_to_d_cos_sin
 
 def clip_angle(theta: float) -> float:
     """
@@ -94,7 +94,7 @@ class BaseGoalGenerator:
         params = self.load_parameters()
         self.params = params
         
-        data_cfg, datasets_cfg, policy_model_cfg, encoder_model_cfg, device = get_inference_config(params["model_name"])
+        data_cfg, datasets_cfg, policy_model_cfg, vision_encoder_cfg, linear_encoder_cfg, device = get_inference_config(params["model_name"])
         self.image_size = data_cfg.image_size
         self.max_depth = datasets_cfg.max_depth
 
@@ -118,7 +118,8 @@ class BaseGoalGenerator:
         self.wpt_i = params["wpt_i"]
         self.model = PilotAgent(data_cfg=data_cfg,
                                 policy_model_cfg=policy_model_cfg,
-                                encoder_model_cfg=encoder_model_cfg,
+                                vision_encoder_cfg=vision_encoder_cfg,
+                                linear_encoder_cfg=linear_encoder_cfg,
                                 robot=params["robot"],
                                 wpt_i=params["wpt_i"],
                                 frame_rate=params["frame_rate"])
@@ -202,7 +203,11 @@ class GoalGenerator(BaseGoalGenerator):
             self.latest_image = msg_to_pil(image_msg, max_depth=self.max_depth)
             self.context_queue.append(self.latest_image)
 
+            
+            # obj detection
+            
             self.latest_obj_det = list(obj_det_msg.objects[0].position)[:2] if obj_det_msg.objects else [0,0]
+            
             self.target_context_queue.append(self.latest_obj_det)
             
             if len(self.context_queue) > self.context_size:
@@ -216,11 +221,23 @@ class GoalGenerator(BaseGoalGenerator):
             self.last_pub_time = current_time
 
             trasformed_context_queue = transform_images(self.context_queue[-self.context_size:], transform=self.transform)
-            target_context_queue = self.target_context_queue[-self.target_context_size:]
-            target_context_queue_tensor = from_numpy(np.array(target_context_queue)).reshape(-1)
-            goal_to_target_tensor = from_numpy(self.goal_to_target)
-
             
+            # Obj det 
+            target_context_queue = self.target_context_queue[-self.target_context_size:]
+            # To numpy
+            target_context_queue = np.array(target_context_queue)
+
+            mask = np.sum(target_context_queue==np.zeros((2,)),axis=1) == 2
+            np_curr_rel_pos_in_d_theta = np.zeros((target_context_queue.shape[0],3))
+            np_curr_rel_pos_in_d_theta[~mask] = xy_to_d_cos_sin(target_context_queue[~mask])
+            np_curr_rel_pos_in_d_theta[~mask,0] = normalize_data(data=np_curr_rel_pos_in_d_theta[~mask,0], stats={'min':0.1,'max':self.max_depth/1000}) # max_depth in mm -> meters
+            target_context_queue_tensor = from_numpy(np_curr_rel_pos_in_d_theta)
+            
+            # Goal condition
+            goal_rel_pos_to_target = xy_to_d_cos_sin(self.goal_to_target)
+            goal_rel_pos_to_target[0] = normalize_data(data=goal_rel_pos_to_target[0], stats={'min':0.1,'max':self.max_depth/1000})
+            goal_to_target_tensor = from_numpy(goal_rel_pos_to_target)
+
             t = tic()
             waypoints = self.model(trasformed_context_queue, target_context_queue_tensor, goal_to_target_tensor)
             dt_infer = toc(t)
