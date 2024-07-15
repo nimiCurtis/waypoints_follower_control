@@ -17,23 +17,7 @@ from zed_interfaces.msg import ObjectsStamped
 from pilot_deploy.inference import PilotAgent, get_inference_config
 from pilot_utils.transforms import transform_images, ObservationTransform
 from pilot_utils.deploy.deploy_utils import msg_to_pil
-from pilot_utils.utils import tic, toc, from_numpy, normalize_data, xy_to_d_cos_sin
-
-def clip_angle(theta: float) -> float:
-    """
-    Clips an angle to the range [-π, π].
-
-    Args:
-        theta (float): Input angle in radians.
-
-    Returns:
-        float: Clipped angle within the range [-π, π].
-    """
-    theta %= 2 * np.pi
-    if -np.pi < theta < np.pi:
-        return theta
-    return theta - 2 * np.pi
-
+from pilot_utils.utils import tic, toc, from_numpy, normalize_data, xy_to_d_cos_sin , clip_angle
 
 def create_path_msg(waypoints: List[Tuple], frame_id: str)->Path:
     """
@@ -186,8 +170,8 @@ class GoalGenerator(BaseGoalGenerator):
         self.obj_det_sub = message_filters.Subscriber(self.params["obj_det_topic"], ObjectsStamped)
         self.ats = message_filters.ApproximateTimeSynchronizer(
             fs=[self.image_sub, self.obj_det_sub],
-            queue_size=10,
-            slop=0.1)
+            queue_size=20,
+            slop=0.2)
         self.ats.registerCallback(self.topics_callback)
         
         rospy.loginfo("GoalGenerator initialized successfully.")
@@ -246,20 +230,20 @@ class GoalGenerator(BaseGoalGenerator):
             dx, dy, hx, hy = waypoints[self.wpt_i]
             yaw = clip_angle(np.arctan2(hy, hx))
             
-            path = create_path_msg(waypoints=waypoints, frame_id=self.base_frame)
+            # path = create_path_msg(waypoints=waypoints, frame_id=self.base_frame)
             pose_stamped = create_pose_stamped(dx, dy, yaw, self.base_frame, self.seq, current_time)
             self.seq += 1
             
             try:
-                            # rospy.loginfo(f"Publishing goal after {dt_pub} seconds.")
-                transform = self.tf_buffer.lookup_transform(self.odom_frame, self.base_frame, rospy.Time.now(), rospy.Duration(0.2))
+                # rospy.loginfo(f"Publishing goal after {dt_pub} seconds.")
+                transform = self.tf_buffer.lookup_transform(self.odom_frame, self.base_frame, current_time, rospy.Duration(0.2))
                 transformed_pose = do_transform_pose(pose_stamped, transform)
 
 
                 rospy.loginfo(f"Publishing goal after {dt_pub} seconds.")
 
                 self.goal_pub.publish(transformed_pose)
-                self.path_pub.publish(path)
+                # self.path_pub.publish(path)
                 rospy.loginfo_throttle(1, f"Planner running. Goal generated ([dx, dy, yaw]): [{dx}, {dy}, {yaw}]")
             
             except Exception as e:

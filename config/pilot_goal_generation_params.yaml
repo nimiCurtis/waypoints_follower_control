@@ -6,12 +6,12 @@ frames:
 
 model: 
   # model_name: pilot-go-to-the-pic-pidiff_2024-06-25_09-43-16
-  model_name: pilot-turtle-static-follower_2024-07-04_13-43-11
+  model_name: pilot-target-tracking_2024-07-14_17-47-20
   # model_name: pilot-turtle-static-follower_2024-07-03_00-16-16
 
-  frame_rate: 6 # NOTE: please pay atteniton that this value is similar to the sampling rate
+  frame_rate: 7 # NOTE: please pay atteniton that this value is similar to the sampling rate
                 # of the data collected to train the policy
-  pub_rate: 4
+  pub_rate: 5
   wpt_i: 5
 
 topics: 
