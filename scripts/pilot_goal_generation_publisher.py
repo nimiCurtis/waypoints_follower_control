@@ -1,4 +1,3 @@
-
 #!/usr/bin/env python3
 from typing import Tuple, List, Deque
 from collections import deque
@@ -11,7 +10,10 @@ from geometry_msgs.msg import PoseStamped
 from nav_msgs.msg import Path
 from sensor_msgs.msg import Image
 from tf.transformations import quaternion_from_euler
-from tf2_ros import Buffer, TransformListener, LookupException, ConnectivityException, ExtrapolationException
+from tf2_ros import Buffer,BufferInterface, TransformListener, LookupException, ConnectivityException, ExtrapolationException
+import tf2_geometry_msgs
+from geometry_msgs.msg import PoseStamped
+
 
 import message_filters
 from zed_interfaces.msg import ObjectsStamped
@@ -72,6 +74,30 @@ def create_pose_stamped(x: float, y: float, yaw: float, frame_id: str, seq: int,
     pose_stamped.pose.orientation.w = quaternion[3]
     return pose_stamped
 
+def do_transform_pose_stamped(pose_stamped, transform):
+    return tf2_geometry_msgs.do_transform_pose(pose_stamped, transform)
+
+class MyBuffer(BufferInterface):
+    def __init__(self):
+        super(MyBuffer, self).__init__()
+        self.buffer = Buffer()  # Use the existing tf2_ros Buffer
+        self.listener = TransformListener(self.buffer)  # Listen for transforms
+        self.registration.add(PoseStamped, do_transform_pose_stamped)
+
+    def set_transform(self, transform, authority):
+        self.buffer.set_transform(transform, authority)
+
+    def lookup_transform(self, target_frame, source_frame, time, timeout=rospy.Duration(0.0)):
+        return self.buffer.lookup_transform(target_frame, source_frame, time, timeout)
+
+    def lookup_transform_full(self, target_frame, target_time, source_frame, source_time, fixed_frame, timeout=rospy.Duration(0.0)):
+        return self.buffer.lookup_transform_full(target_frame, target_time, source_frame, source_time, fixed_frame, timeout)
+
+    def can_transform(self, target_frame, source_frame, time, timeout=rospy.Duration(0.0)):
+        return self.buffer.can_transform(target_frame, source_frame, time, timeout)
+
+    def can_transform_full(self, target_frame, target_time, source_frame, source_time, fixed_frame, timeout=rospy.Duration(0.0)):
+        return self.buffer.can_transform_full(target_frame, target_time, source_frame, source_time, fixed_frame, timeout)
 class BaseGoalGenerator:
     def __init__(self):
         """
@@ -100,12 +126,14 @@ class BaseGoalGenerator:
         self.seq = 1
 
         # TF buffer and listener
-        self.tf_buffer = Buffer()
-        self.tf_listener = TransformListener(self.tf_buffer)
+        # self.tf_buffer = Buffer()
+        self.tf_buffer = MyBuffer()
+
+        # self.tf_listener = TransformListener(self.tf_buffer)
 
         # Context queues
         self.context_queue: Deque = deque(maxlen=data_cfg.context_size + 1)
-        self.target_context_queue: Deque = deque(maxlen=data_cfg.context_size if data_cfg.target_context else 1)
+        self.target_context_queue: Deque = deque(maxlen=data_cfg.context_size+1 if data_cfg.target_context else 1)
 
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu") if device == "cuda" else "cpu"
 
@@ -126,7 +154,7 @@ class BaseGoalGenerator:
 
         self.frame_rate = params["frame_rate"]
         self.inference_rate = params["inference_rate"]
-        self.rate = rospy.Rate(self.inference_rate)
+        self.inference_times = deque(maxlen=self.inference_rate)
 
         self.odom_frame = params["odom_frame"]
         self.base_frame = params["base_frame"]
@@ -247,7 +275,10 @@ class GoalGenerator(BaseGoalGenerator):
             t = tic()
             waypoints = self.model(transformed_context_queue, target_context_queue_tensor, goal_to_target_tensor)
             dt_infer = toc(t)
-            rospy.loginfo(f"Inferencing time: {dt_infer} seconds.")
+            # rospy.loginfo(f"Inferencing time: {dt_infer:.4f} seconds.")
+            self.inference_times.append(dt_infer)
+            avg_inference_time = np.mean(self.inference_times)
+            rospy.loginfo_throttle(10, f"Average inference time (last {len(self.inference_times)}): {avg_inference_time:.4f} seconds.")
 
             dx, dy, hx, hy = waypoints[self.wpt_i]
             yaw = clip_angle(np.arctan2(hy, hx))
@@ -255,12 +286,13 @@ class GoalGenerator(BaseGoalGenerator):
             # Create and transform pose
             pose_stamped = create_pose_stamped(dx, dy, yaw, self.base_frame, self.seq, current_time)
             self.seq += 1
-            rospy.loginfo_throttle(1, f"Planner running. Goal generated ([dx, dy, yaw]): [{dx}, {dy}, {yaw}]")
+            rospy.loginfo_throttle(1, f"Planner running. Goal generated ([dx, dy, yaw]): [{dx:.4f}, {dy:.4f}, {yaw:.4f}]")
             try:
                 # Transform the pose to the odom frame
                 self.transformed_pose = self.tf_buffer.transform(object_stamped=pose_stamped,
                                                                 target_frame=self.odom_frame,
-                                                                timeout=rospy.Duration(0.2))
+                                                                timeout=rospy.Duration(0.2),
+                                                                )
             except (LookupException, ConnectivityException, ExtrapolationException) as e:
                 rospy.logwarn(f"Failed to transform pose: {str(e)}")
                 self.transformed_pose = None  # Ensure the transformed_pose is not used if transformation fails
@@ -269,7 +301,7 @@ class GoalGenerator(BaseGoalGenerator):
         if self.transformed_pose is not None:
             dt_pub = (current_time - self.last_msg_time).to_sec()
             self.goal_pub.publish(self.transformed_pose)
-            rospy.loginfo(f"Publishing goal after {dt_pub} seconds.")
+            # rospy.loginfo(f"Publishing goal after {dt_pub} seconds.")
             self.last_msg_time = current_time
 
 
