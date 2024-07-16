@@ -1,3 +1,4 @@
+
 #!/usr/bin/env python3
 from typing import Tuple, List, Deque
 from collections import deque
@@ -11,7 +12,6 @@ from nav_msgs.msg import Path
 from sensor_msgs.msg import Image
 from tf.transformations import quaternion_from_euler
 from tf2_ros import Buffer, TransformListener, LookupException, ConnectivityException, ExtrapolationException
-from tf2_geometry_msgs import do_transform_pose
 
 import message_filters
 from zed_interfaces.msg import ObjectsStamped
@@ -74,11 +74,16 @@ def create_pose_stamped(x: float, y: float, yaw: float, frame_id: str, seq: int,
 
 class BaseGoalGenerator:
     def __init__(self):
+        """
+        Initializes the BaseGoalGenerator class, setting up ROS node, parameters, model configuration, and publishers/subscribers.
+        """
         rospy.init_node('pilot_goal_generation_publisher', anonymous=True)
 
+        # Load parameters
         params = self.load_parameters()
         self.params = params
 
+        # Get inference configuration
         data_cfg, datasets_cfg, policy_model_cfg, vision_encoder_cfg, linear_encoder_cfg, device = get_inference_config(params["model_name"])
         self.image_size = data_cfg.image_size
         self.max_depth = datasets_cfg.max_depth
@@ -88,19 +93,23 @@ class BaseGoalGenerator:
         self.last_inference_time = current_time
         self.last_msg_time = current_time
 
+        # ROS publishers
         self.path_pub = rospy.Publisher('/poses_path', Path, queue_size=10)
         self.goal_pub = rospy.Publisher('/goal_pose', PoseStamped, queue_size=10)
 
         self.seq = 1
 
+        # TF buffer and listener
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer)
 
+        # Context queues
         self.context_queue: Deque = deque(maxlen=data_cfg.context_size + 1)
         self.target_context_queue: Deque = deque(maxlen=data_cfg.context_size if data_cfg.target_context else 1)
 
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu") if device == "cuda" else "cpu"
 
+        # Model initialization
         self.wpt_i = params["wpt_i"]
         self.model = PilotAgent(data_cfg=data_cfg,
                                 policy_model_cfg=policy_model_cfg,
@@ -126,6 +135,12 @@ class BaseGoalGenerator:
         rospy.on_shutdown(self.shutdownhook)
 
     def load_parameters(self):
+        """
+        Loads ROS parameters for the node.
+
+        Returns:
+            dict: A dictionary containing the loaded parameters.
+        """
         node_name = rospy.get_name()
 
         params = {
@@ -157,17 +172,27 @@ class BaseGoalGenerator:
         return params
 
     def shutdownhook(self):
+        """
+        ROS shutdown hook for cleanup actions.
+        """
         rospy.logwarn("Shutting down GoalGenerator.")
         # Additional cleanup actions can be added here.
 
     def topics_callback(self, *args):
+        """
+        Abstract method to be implemented by derived classes for handling topic callbacks.
+        """
         raise NotImplementedError("Derived classes must implement this method.")
 
 class GoalGenerator(BaseGoalGenerator):
     def __init__(self):
+        """
+        Initializes the GoalGenerator class, setting up subscribers and synchronizers for image and object detection topics.
+        """
         super().__init__()
         self.goal_to_target = np.array([1.0, 0.0])
 
+        # Subscribers and synchronizer for image and object detection topics
         self.image_sub = message_filters.Subscriber(self.params["image_topic"], Image)
         self.obj_det_sub = message_filters.Subscriber(self.params["obj_det_topic"], ObjectsStamped)
         self.ats = message_filters.ApproximateTimeSynchronizer(
@@ -179,8 +204,16 @@ class GoalGenerator(BaseGoalGenerator):
         rospy.loginfo("GoalGenerator initialized successfully.")
 
     def topics_callback(self, image_msg: Image, obj_det_msg: ObjectsStamped):
+        """
+        Callback function for synchronized image and object detection messages. Processes data and performs inference.
+
+        Args:
+            image_msg (Image): Image message from the subscribed topic.
+            obj_det_msg (ObjectsStamped): Object detection message from the subscribed topic.
+        """
         current_time = image_msg.header.stamp
 
+        # Collect image data at the specified frame rate
         dt_collect = (current_time - self.last_collect_time).to_sec()
         if dt_collect >= 1.0 / self.frame_rate:
             self.last_collect_time = current_time
@@ -190,10 +223,12 @@ class GoalGenerator(BaseGoalGenerator):
             self.latest_obj_det = list(obj_det_msg.objects[0].position)[:2] if obj_det_msg.objects else [0, 0]
             self.target_context_queue.append(self.latest_obj_det)
 
+        # Perform inference at the specified inference rate
         dt_inference = (current_time - self.last_inference_time).to_sec()
         if len(self.context_queue) >= self.context_queue.maxlen and len(self.target_context_queue) >= self.target_context_queue.maxlen and dt_inference >= 1.0 / self.inference_rate:
             self.last_inference_time = current_time
 
+            # Transform image data and prepare target context tensor
             transformed_context_queue = transform_images(list(self.context_queue), transform=self.transform)
             target_context_queue = np.array(list(self.target_context_queue))
 
@@ -203,10 +238,12 @@ class GoalGenerator(BaseGoalGenerator):
             np_curr_rel_pos_in_d_theta[~mask, 0] = normalize_data(data=np_curr_rel_pos_in_d_theta[~mask, 0], stats={'min': 0.1, 'max': self.max_depth / 1000})
             target_context_queue_tensor = from_numpy(np_curr_rel_pos_in_d_theta)
 
+            # Prepare goal condition tensor
             goal_rel_pos_to_target = xy_to_d_cos_sin(self.goal_to_target)
             goal_rel_pos_to_target[0] = normalize_data(data=goal_rel_pos_to_target[0], stats={'min': 0.1, 'max': self.max_depth / 1000})
             goal_to_target_tensor = from_numpy(goal_rel_pos_to_target)
 
+            # Perform inference to get waypoints
             t = tic()
             waypoints = self.model(transformed_context_queue, target_context_queue_tensor, goal_to_target_tensor)
             dt_infer = toc(t)
@@ -215,74 +252,75 @@ class GoalGenerator(BaseGoalGenerator):
             dx, dy, hx, hy = waypoints[self.wpt_i]
             yaw = clip_angle(np.arctan2(hy, hx))
 
+            # Create and transform pose
             pose_stamped = create_pose_stamped(dx, dy, yaw, self.base_frame, self.seq, current_time)
             self.seq += 1
             rospy.loginfo_throttle(1, f"Planner running. Goal generated ([dx, dy, yaw]): [{dx}, {dy}, {yaw}]")
             try:
+                # Transform the pose to the odom frame
                 self.transformed_pose = self.tf_buffer.transform(object_stamped=pose_stamped,
-                                                            target_frame=self.odom_frame,
-                                                            timeout=rospy.Duration(0.2))
-                # transform = self.tf_buffer.lookup_transform(self.odom_frame, self.base_frame, current_time, rospy.Duration(0.2))
-                # self.transformed_pose = do_transform_pose(pose_stamped, transform)
+                                                                target_frame=self.odom_frame,
+                                                                timeout=rospy.Duration(0.2))
             except (LookupException, ConnectivityException, ExtrapolationException) as e:
                 rospy.logwarn(f"Failed to transform pose: {str(e)}")
                 self.transformed_pose = None  # Ensure the transformed_pose is not used if transformation fails
 
-
+        # Publish the transformed pose
         if self.transformed_pose is not None:
             dt_pub = (current_time - self.last_msg_time).to_sec()
             self.goal_pub.publish(self.transformed_pose)
             rospy.loginfo(f"Publishing goal after {dt_pub} seconds.")
             self.last_msg_time = current_time
 
-class GoalGeneratorNoCond(BaseGoalGenerator):
-    def __init__(self):
-        super().__init__()
 
-        self.image_sub = rospy.Subscriber(self.params["image_topic"], Image, self.topics_callback)
+# class GoalGeneratorNoCond(BaseGoalGenerator):
+#     def __init__(self):
+#         super().__init__()
 
-        rospy.loginfo("GoalGeneratorNoCond initialized successfully.")
+#         self.image_sub = rospy.Subscriber(self.params["image_topic"], Image, self.topics_callback)
+
+#         rospy.loginfo("GoalGeneratorNoCond initialized successfully.")
         
-    def topics_callback(self, image_msg: Image):
-        current_time = rospy.Time.now()
-        dt_collect = (current_time - self.last_collect_time).to_sec()
+#     def topics_callback(self, image_msg: Image):
+#         current_time = rospy.Time.now()
+#         dt_collect = (current_time - self.last_collect_time).to_sec()
 
-        if dt_collect >= 1.0 / self.frame_rate:
-            self.last_collect_time = current_time
-            self.latest_image = msg_to_pil(image_msg, max_depth=self.max_depth)
-            self.context_queue.append(self.latest_image)
+#         if dt_collect >= 1.0 / self.frame_rate:
+#             self.last_collect_time = current_time
+#             self.latest_image = msg_to_pil(image_msg, max_depth=self.max_depth)
+#             self.context_queue.append(self.latest_image)
             
-            if len(self.context_queue) > self.context_size:
-                self.context_queue.pop(0)
+#             if len(self.context_queue) > self.context_size:
+#                 self.context_queue.pop(0)
 
-        dt_pub = (current_time - self.last_inference_time).to_sec()
-        if len(self.context_queue) >= self.context_size and dt_pub >= 1.0 / self.inference_rate:
-            self.last_inference_time = current_time
+#         dt_pub = (current_time - self.last_inference_time).to_sec()
+#         if len(self.context_queue) >= self.context_size and dt_pub >= 1.0 / self.inference_rate:
+#             self.last_inference_time = current_time
 
-            trasformed_context_queue = transform_images(self.context_queue[-self.context_size:], transform=self.transform)
+#             trasformed_context_queue = transform_images(self.context_queue[-self.context_size:], transform=self.transform)
 
-            waypoints = self.model(trasformed_context_queue)
-            dx, dy, hx, hy = waypoints[self.wpt_i]
-            yaw = clip_angle(np.arctan2(hy, hx))
+#             waypoints = self.model(trasformed_context_queue)
+#             dx, dy, hx, hy = waypoints[self.wpt_i]
+#             yaw = clip_angle(np.arctan2(hy, hx))
             
-            path = create_path_msg(waypoints=waypoints, frame_id=self.base_frame)
-            pose_stamped = create_pose_stamped(dx, dy, yaw, self.base_frame, self.seq, current_time)
-            self.seq += 1
+#             path = create_path_msg(waypoints=waypoints, frame_id=self.base_frame)
+#             pose_stamped = create_pose_stamped(dx, dy, yaw, self.base_frame, self.seq, current_time)
+#             self.seq += 1
             
-            try:
-                transform = self.tf_buffer.lookup_transform(self.odom_frame, self.base_frame, rospy.Time.now(), rospy.Duration(0.2))
-                transformed_pose = do_transform_pose(pose_stamped, transform)
-                # transformed_pose = self.tf_buffer.transform(object_stamped=pose_stamped,
-                #                                             target_frame=self.odom_frame,
-                #                                             timeout=rospy.Duration(0.2))
+#             try:
+#                 transform = self.tf_buffer.lookup_transform(self.odom_frame, self.base_frame, rospy.Time.now(), rospy.Duration(0.2))
+#                 transformed_pose = do_transform_pose(pose_stamped, transform)
+#                 # transformed_pose = self.tf_buffer.transform(object_stamped=pose_stamped,
+#                 #                                             target_frame=self.odom_frame,
+#                 #                                             timeout=rospy.Duration(0.2))
 
-            except Exception as e:
-                rospy.logwarn(f"Failed to transform pose: {str(e)}")
-                pass
+#             except Exception as e:
+#                 rospy.logwarn(f"Failed to transform pose: {str(e)}")
+#                 pass
             
-            self.goal_pub.publish(transformed_pose)
-            self.path_pub.publish(path)
-            rospy.loginfo_throttle(1, f"Planner running. Goal generated ([dx, dy, yaw]): [{dx}, {dy}, {yaw}]")
+#             self.goal_pub.publish(transformed_pose)
+#             self.path_pub.publish(path)
+#             rospy.loginfo_throttle(1, f"Planner running. Goal generated ([dx, dy, yaw]): [{dx}, {dy}, {yaw}]")
 
 if __name__ == '__main__':
     # Start node
