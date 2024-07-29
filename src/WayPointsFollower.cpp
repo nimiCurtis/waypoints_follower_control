@@ -103,7 +103,7 @@ void WaypointsFollowerControl::goalCallback(const geometry_msgs::PoseStamped& ms
 
 void WaypointsFollowerControl::odomCallback(const nav_msgs::Odometry& msg)
 {   
-
+    
     double roll, pitch, yaw;
     geometry_msgs::Quaternion quat = msg.pose.pose.orientation;
     tf2::Matrix3x3(tf2::Quaternion(quat.x, quat.y, quat.z, quat.w))

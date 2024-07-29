@@ -99,10 +99,6 @@ class WaypointsFollowerControl
     double ang_vel_min_ ;
 
     double rotate_dist_threshold_;
-
-
-    
-
 };
 
 } /* namespace */

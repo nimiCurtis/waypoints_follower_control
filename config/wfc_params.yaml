@@ -1,9 +1,10 @@
 
 # ROS topics
 topics:
-  odom_topic: /turtlebot/odom
+  # odom_topic: /turtlebot/odom
+  odom_topic: /zedm/zed_node/odom
   goal_topic: /goal_pose
-  cmd_topic: /turtlebot/cmd_vel
+  cmd_topic: /wfc/cmd_vel
 
 # Control
 control:

@@ -1,4 +1,4 @@
-robot: turtlebot
+robot: go2 # turtlebot | go2 | nimrod
 
 frames:
   odom_frame: odom
