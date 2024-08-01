@@ -147,7 +147,7 @@ class BaseGoalGenerator:
                                 wpt_i=params["wpt_i"],
                                 frame_rate=params["frame_rate"])
 
-        self.model.load(params["model_name"])
+        self.model.load(model_name=params["model_name"],model_version=params["model_version"])
         self.model.to(device=device)
 
         self.transform = ObservationTransform(data_cfg=data_cfg).get_transform("test")
@@ -174,6 +174,7 @@ class BaseGoalGenerator:
         params = {
             "robot": rospy.get_param(node_name + "/robot", default="turtlebot"),
             "model_name": rospy.get_param(node_name + "/model/model_name", default="pilot-target-tracking_2024-07-14_17-47-20"),
+            "model_version": str(rospy.get_param(node_name + "/model/model_version", default="best_model")),
             "frame_rate": rospy.get_param(node_name + "/model/frame_rate", default=7),
             "inference_rate": rospy.get_param(node_name + "/model/inference_rate", default=5),  # Added inference_rate parameter
             "wpt_i": rospy.get_param(node_name + "/model/wpt_i", default=2),
@@ -187,6 +188,7 @@ class BaseGoalGenerator:
         rospy.loginfo("* Robot: " + params["robot"])
         rospy.loginfo("* Model:")
         rospy.loginfo("  * model_name: " + params["model_name"])
+        rospy.loginfo("  * model_version: " + params["model_version"])
         rospy.loginfo("  * frame_rate: " + str(params["frame_rate"]))
         rospy.loginfo("  * inference_rate: " + str(params["inference_rate"]))
         rospy.loginfo("  * wpt_i: " + str(params["wpt_i"]))
