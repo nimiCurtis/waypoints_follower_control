@@ -173,7 +173,7 @@ class BaseGoalGenerator:
 
         params = {
             "robot": rospy.get_param(node_name + "/robot", default="turtlebot"),
-            "model_name": rospy.get_param(node_name + "/model/model_name", default="pilot-target-tracking_2024-07-14_17-47-20"),
+            "model_name": rospy.get_param(node_name + "/model/model_name", default="pilot-target-tracking-c2_2024-07-29_21-02-01"),
             "model_version": str(rospy.get_param(node_name + "/model/model_version", default="best_model")),
             "frame_rate": rospy.get_param(node_name + "/model/frame_rate", default=7),
             "inference_rate": rospy.get_param(node_name + "/model/inference_rate", default=5),  # Added inference_rate parameter
