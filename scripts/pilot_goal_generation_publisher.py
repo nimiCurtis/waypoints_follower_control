@@ -9,7 +9,7 @@ import rospy
 from geometry_msgs.msg import PoseStamped
 from nav_msgs.msg import Path
 from sensor_msgs.msg import Image
-from tf.transformations import quaternion_from_euler
+from tf.transformations import quaternion_from_euler, euler_from_quaternion
 from tf2_ros import Buffer,BufferInterface, TransformListener, LookupException, ConnectivityException, ExtrapolationException
 import tf2_geometry_msgs
 from geometry_msgs.msg import PoseStamped
@@ -17,11 +17,28 @@ from geometry_msgs.msg import PoseStamped
 
 import message_filters
 from zed_interfaces.msg import ObjectsStamped
+from nav_msgs.msg import Odometry
 
 from pilot_deploy.inference import PilotAgent, get_inference_config
 from pilot_utils.transforms import transform_images, ObservationTransform
 from pilot_utils.deploy.deploy_utils import msg_to_pil
 from pilot_utils.utils import tic, toc, from_numpy, normalize_data, xy_to_d_cos_sin, clip_angle
+from pilot_utils.data.data_utils import to_local_coords
+
+def pos_yaw_from_odom(odom_msg:Odometry)->list:
+    pos = [odom_msg.pose.pose.position.x,
+        odom_msg.pose.pose.position.y,
+        odom_msg.pose.pose.position.z]
+    ori = [odom_msg.pose.pose.orientation.x,
+        odom_msg.pose.pose.orientation.y,
+        odom_msg.pose.pose.orientation.z,
+        odom_msg.pose.pose.orientation.w]
+    
+    euler = euler_from_quaternion(ori)
+    yaw = euler[2]
+    
+    return [pos[0],pos[1],yaw]
+
 
 def create_path_msg(waypoints: List[Tuple], frame_id: str) -> Path:
     """
@@ -126,15 +143,18 @@ class BaseGoalGenerator:
         self.seq = 1
 
         # TF buffer and listener
-        # self.tf_buffer = Buffer()
         self.tf_buffer = MyBuffer()
 
-        # self.tf_listener = TransformListener(self.tf_buffer)
-
+        self.context_size = data_cfg.context_size
+        self.action_context_size = data_cfg.action_context_size + 1 if data_cfg.action_context_size > 0 else data_cfg.action_context_size
+        self.target_context = data_cfg.target_context
+        self.target_dim = data_cfg.target_dim
+        
         # Context queues
-        self.context_queue: Deque = deque(maxlen=data_cfg.context_size + 1)
-        self.target_context_queue: Deque = deque(maxlen=data_cfg.context_size+1 if data_cfg.target_context else 1)
-
+        self.context_queue: Deque = deque(maxlen=self.context_size + 1)
+        self.target_context_queue: Deque = deque(maxlen=self.context_size + 1 if self.target_context else 1) # modify
+        self.action_context_queue: Deque = deque(maxlen=self.action_context_size)
+        
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu") if device == "cuda" else "cpu"
 
         # Model initialization
@@ -160,6 +180,10 @@ class BaseGoalGenerator:
         self.base_frame = params["base_frame"]
 
         self.transformed_pose = None
+
+        self.prev_filtered_action = [0,0,0]
+        self.k = 0.35
+        
         rospy.on_shutdown(self.shutdownhook)
 
     def load_parameters(self):
@@ -173,13 +197,14 @@ class BaseGoalGenerator:
 
         params = {
             "robot": rospy.get_param(node_name + "/robot", default="turtlebot"),
-            "model_name": rospy.get_param(node_name + "/model/model_name", default="pilot-target-tracking-c2_2024-07-29_21-02-01"),
+            "model_name": rospy.get_param(node_name + "/model/model_name", default="pilot-target-tracking-c3_2024-08-03_13-16-38_ecn_partial_data"),
             "model_version": str(rospy.get_param(node_name + "/model/model_version", default="best_model")),
             "frame_rate": rospy.get_param(node_name + "/model/frame_rate", default=7),
             "inference_rate": rospy.get_param(node_name + "/model/inference_rate", default=5),  # Added inference_rate parameter
             "wpt_i": rospy.get_param(node_name + "/model/wpt_i", default=2),
             "image_topic": rospy.get_param(node_name + "/topics/image_topic", default="/zedm/zed_node/depth/depth_registered"),
             "obj_det_topic": rospy.get_param(node_name + "/topics/obj_det_topic", default="/obj_detect_publisher_node/object"),
+            "odom_topic": rospy.get_param(node_name + "/topics/odom_topic", default="/zedm/zed_node/odom"),
             "odom_frame": rospy.get_param(node_name + "/frames/odom_frame", default="odom"),
             "base_frame": rospy.get_param(node_name + "/frames/base_frame", default="base_link"),
         }
@@ -195,8 +220,12 @@ class BaseGoalGenerator:
         rospy.loginfo("* Topics:")
         rospy.loginfo("  * image_topic: " + params["image_topic"])
         rospy.loginfo("  * obj_det_topic: " + params["obj_det_topic"])
+        rospy.loginfo("  * odom_topic: " + params["odom_topic"])
+        
         rospy.loginfo("* Frames:")
         rospy.loginfo("* odom_frame: " + params["odom_frame"])
+        rospy.loginfo("* base_frame: " + params["base_frame"])
+
         rospy.loginfo("**************************")
 
         return params
@@ -225,15 +254,28 @@ class GoalGenerator(BaseGoalGenerator):
         # Subscribers and synchronizer for image and object detection topics
         self.image_sub = message_filters.Subscriber(self.params["image_topic"], Image)
         self.obj_det_sub = message_filters.Subscriber(self.params["obj_det_topic"], ObjectsStamped)
+        self.odom_sub = message_filters.Subscriber(self.params["odom_topic"], Odometry)
+        
+        self.sync_topics_list = [self.image_sub]
+
+        if self.target_context:
+            self.sync_topics_list.append(self.obj_det_sub)
+            
+            
+        if self.action_context_size>0:
+            self.sync_topics_list.append(self.odom_sub)
+
         self.ats = message_filters.ApproximateTimeSynchronizer(
-            fs=[self.image_sub, self.obj_det_sub],
+            fs=self.sync_topics_list,
             queue_size=20,
             slop=0.2)
+        
+        
         self.ats.registerCallback(self.topics_callback)
 
         rospy.loginfo("GoalGenerator initialized successfully.")
 
-    def topics_callback(self, image_msg: Image, obj_det_msg: ObjectsStamped):
+    def topics_callback(self, image_msg: Image, obj_det_msg: ObjectsStamped, odom_msg: Odometry = None):
         """
         Callback function for synchronized image and object detection messages. Processes data and performs inference.
 
@@ -252,30 +294,66 @@ class GoalGenerator(BaseGoalGenerator):
 
             self.latest_obj_det = list(obj_det_msg.objects[0].position)[:2] if obj_det_msg.objects else [0, 0]
             self.target_context_queue.append(self.latest_obj_det)
+            
+            
+            
+            if odom_msg is not None:
+                self.latest_odom_pos = pos_yaw_from_odom(odom_msg=odom_msg)
+                self.action_context_queue.append(self.latest_odom_pos)
 
         # Perform inference at the specified inference rate
         dt_inference = (current_time - self.last_inference_time).to_sec()
-        if len(self.context_queue) >= self.context_queue.maxlen and len(self.target_context_queue) >= self.target_context_queue.maxlen and dt_inference >= 1.0 / self.inference_rate:
+        if (len(self.context_queue) >= self.context_queue.maxlen) and (len(self.target_context_queue) >= self.target_context_queue.maxlen) and  (len(self.action_context_queue) >= self.action_context_queue.maxlen) and (dt_inference >= 1.0 / self.inference_rate):
             self.last_inference_time = current_time
 
             # Transform image data and prepare target context tensor
             transformed_context_queue = transform_images(list(self.context_queue), transform=self.transform)
             target_context_queue = np.array(list(self.target_context_queue))
+            
+            prev_actions = None
+            # action_context_queue = np.array(list(self.action_context_queue))
+            if odom_msg is not None:
+                action_context_queue = np.array(list(self.action_context_queue))
+                
+                prev_positions = action_context_queue[:,:2]
+                prev_yaw = action_context_queue[:,2]
+                prev_waypoints = to_local_coords(prev_positions, prev_positions[0], prev_yaw[0])
+                prev_yaw = prev_yaw[1:] - prev_yaw[0]  # yaw is relative to the initial yaw
+                prev_actions = np.concatenate([prev_waypoints[1:], prev_yaw[:, None]], axis=-1)
+                prev_actions = from_numpy(prev_actions)
 
-            mask = np.sum(target_context_queue == np.zeros((2,)), axis=1) == 2
-            np_curr_rel_pos_in_d_theta = np.zeros((target_context_queue.shape[0], 3))
-            np_curr_rel_pos_in_d_theta[~mask] = xy_to_d_cos_sin(target_context_queue[~mask])
-            np_curr_rel_pos_in_d_theta[~mask, 0] = normalize_data(data=np_curr_rel_pos_in_d_theta[~mask, 0], stats={'min': 0.1, 'max': self.max_depth / 1000})
-            target_context_queue_tensor = from_numpy(np_curr_rel_pos_in_d_theta)
+            
+            target_context_mask = np.sum(target_context_queue == np.zeros((2,)), axis=1) == 2
+            np_curr_rel_pos = np.zeros((target_context_queue.shape[0], self.target_dim))
+            if self.target_dim == 3:
+                np_curr_rel_pos[~target_context_mask] = xy_to_d_cos_sin(target_context_queue[~target_context_mask])
+                np_curr_rel_pos[~target_context_mask, 0] = normalize_data(data=np_curr_rel_pos[~target_context_mask, 0], stats={'min': -self.max_depth / 1000, 'max': self.max_depth / 1000})
+            elif self.target_dim == 2:
+                np_curr_rel_pos[~target_context_mask] = normalize_data(data=target_context_queue[~target_context_mask], stats={'min': -self.max_depth / 1000, 'max': self.max_depth / 1000})
+            
+            # mask = np.sum(target_context_queue == np.zeros((2,)), axis=1) == 2
+            # np_curr_rel_pos_in_d_theta = np.zeros((target_context_queue.shape[0], 3))
+            # np_curr_rel_pos_in_d_theta[~mask] = xy_to_d_cos_sin(target_context_queue[~mask])
+            # np_curr_rel_pos_in_d_theta[~mask, 0] = normalize_data(data=np_curr_rel_pos_in_d_theta[~mask, 0], stats={'min': 0.1, 'max': self.max_depth / 1000})
+            target_context_queue_tensor = from_numpy(np_curr_rel_pos)
 
             # Prepare goal condition tensor
-            goal_rel_pos_to_target = xy_to_d_cos_sin(self.goal_to_target)
-            goal_rel_pos_to_target[0] = normalize_data(data=goal_rel_pos_to_target[0], stats={'min': 0.1, 'max': self.max_depth / 1000})
+            if self.target_dim == 3:
+                    goal_rel_pos_to_target = xy_to_d_cos_sin(self.goal_to_target)
+                    goal_rel_pos_to_target[0] = normalize_data(data=goal_rel_pos_to_target[0], stats={'min': -self.max_depth / 1000, 'max': self.max_depth / 1000})
+            elif self.target_dim == 2:
+                goal_rel_pos_to_target = normalize_data(data=self.goal_to_target, stats={'min': -self.max_depth / 1000, 'max': self.max_depth / 1000})
+
+            # goal_rel_pos_to_target = xy_to_d_cos_sin(self.goal_to_target)
+            # goal_rel_pos_to_target[0] = normalize_data(data=goal_rel_pos_to_target[0], stats={'min': 0.1, 'max': self.max_depth / 1000})
             goal_to_target_tensor = from_numpy(goal_rel_pos_to_target)
 
             # Perform inference to get waypoints
             t = tic()
-            waypoints = self.model(transformed_context_queue, target_context_queue_tensor, goal_to_target_tensor)
+            waypoints = self.model(transformed_context_queue,
+                                target_context_queue_tensor,
+                                goal_to_target_tensor,
+                                prev_actions)
             dt_infer = toc(t)
             # rospy.loginfo(f"Inferencing time: {dt_infer:.4f} seconds.")
             self.inference_times.append(dt_infer)
@@ -283,7 +361,14 @@ class GoalGenerator(BaseGoalGenerator):
             rospy.loginfo_throttle(10, f"Average inference time (last {len(self.inference_times)}): {avg_inference_time:.4f} seconds.")
 
             dx, dy, hx, hy = waypoints[self.wpt_i]
-            yaw = clip_angle(np.arctan2(hy, hx))
+            
+            dx = self.k*dx + (1-self.k)*self.prev_filtered_action[0]
+            dy = self.k*dy + (1-self.k)*self.prev_filtered_action[1]
+
+            yaw = clip_angle(self.k*clip_angle(np.arctan2(hy, hx)) + (1-self.k)*self.prev_filtered_action[2]) 
+
+            # smooth
+            self.prev_filtered_action = [dx,dy,yaw]
 
             # Create and transform pose
             pose_stamped = create_pose_stamped(dx, dy, yaw, self.base_frame, self.seq, current_time)
@@ -305,6 +390,8 @@ class GoalGenerator(BaseGoalGenerator):
             self.goal_pub.publish(self.transformed_pose)
             # rospy.loginfo(f"Publishing goal after {dt_pub} seconds.")
             self.last_msg_time = current_time
+
+
 
 
 # class GoalGeneratorNoCond(BaseGoalGenerator):

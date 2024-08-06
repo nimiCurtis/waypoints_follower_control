@@ -18,6 +18,6 @@ model:
 topics: 
   image_topic: /zedm/zed_node/depth/depth_registered
   # image_topic: /zedm/zed_node/rgb/image_rect_color
-
   obj_det_topic: /obj_detect_publisher_node/object
+  odom_topic: /zedm/zed_node/odom
 
