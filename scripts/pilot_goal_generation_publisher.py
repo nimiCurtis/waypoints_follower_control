@@ -197,7 +197,7 @@ class BaseGoalGenerator:
 
         params = {
             "robot": rospy.get_param(node_name + "/robot", default="turtlebot"),
-            "model_name": rospy.get_param(node_name + "/model/model_name", default="pilot-target-tracking-c3_2024-08-03_13-16-38_ecn_partial_data"),
+            "model_name": rospy.get_param(node_name + "/model/model_name", default="pilot_tracking-bsz128_c3_ac3_td2_2024-08-06_21-35-26"),
             "model_version": str(rospy.get_param(node_name + "/model/model_version", default="best_model")),
             "frame_rate": rospy.get_param(node_name + "/model/frame_rate", default=7),
             "inference_rate": rospy.get_param(node_name + "/model/inference_rate", default=5),  # Added inference_rate parameter
@@ -295,8 +295,6 @@ class GoalGenerator(BaseGoalGenerator):
             self.latest_obj_det = list(obj_det_msg.objects[0].position)[:2] if obj_det_msg.objects else [0, 0]
             self.target_context_queue.append(self.latest_obj_det)
             
-            
-            
             if odom_msg is not None:
                 self.latest_odom_pos = pos_yaw_from_odom(odom_msg=odom_msg)
                 self.action_context_queue.append(self.latest_odom_pos)
@@ -308,12 +306,12 @@ class GoalGenerator(BaseGoalGenerator):
 
             # Transform image data and prepare target context tensor
             transformed_context_queue = transform_images(list(self.context_queue), transform=self.transform)
-            target_context_queue = np.array(list(self.target_context_queue))
+            target_context_queue = np.array(self.target_context_queue)
             
             prev_actions = None
             # action_context_queue = np.array(list(self.action_context_queue))
             if odom_msg is not None:
-                action_context_queue = np.array(list(self.action_context_queue))
+                action_context_queue = np.array(self.action_context_queue)
                 
                 prev_positions = action_context_queue[:,:2]
                 prev_yaw = action_context_queue[:,2]
