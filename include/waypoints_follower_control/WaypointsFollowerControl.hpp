@@ -99,6 +99,13 @@ class WaypointsFollowerControl
     double ang_vel_min_ ;
 
     double rotate_dist_threshold_;
+
+    // Added variables for smoothing control commands
+    Eigen::Vector2d prev_raw_control_cmd_;       // Previous raw control command
+    Eigen::Vector2d prev_filtered_control_cmd_;  // Previous filtered control command
+    Eigen::Vector2d filtered_control_cmd_;       // Current filtered control command
+    double k_;                                   // Coefficient for current command influence
+    double e_;                                   // Coefficient for previous raw command influence
 };
 
 } /* namespace */

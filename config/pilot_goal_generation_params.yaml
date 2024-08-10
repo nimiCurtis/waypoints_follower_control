@@ -15,7 +15,7 @@ model:
   frame_rate: 7 # NOTE: please pay atteniton that this value is similar to the sampling rate
                 # of the data collected to train the policy
   inference_rate: 5
-  wpt_i: 2
+  wpt_i: 4
 
 topics: 
   image_topic: /zedm/zed_node/depth/depth_registered

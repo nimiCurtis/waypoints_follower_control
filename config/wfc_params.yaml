@@ -10,15 +10,19 @@ topics:
 control:
   rotate_dist_threshold: 0.1 # [m]
   linear:
-    max_vel: 0.4 # change depend on robot config
-    min_vel: -0.3
-    kp: 0.05
-    ki: 0.0001
-    kd: 0.0001
+    max_vel: 2. # change depend on robot config
+    min_vel: -1.
+    kp: 0.1
+    ki: 0.0
+    kd: 0.0
 
   angular:
     max_vel: 1.
     min_vel: -1.
     kp: 0.1
-    ki: 0.001
-    kd: 0.001
+    ki: 0.0
+    kd: 0.0
+  
+  smoothing:
+    k: 0.25  # Coefficient for current command influence
+    e: 0.1  # Coefficient for previous raw command influence

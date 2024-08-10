@@ -9,6 +9,10 @@ WaypointsFollowerControl::WaypointsFollowerControl(ros::NodeHandle& nodeHandle)
     : nodeHandle_(nodeHandle),
     prev_time_(ros::Time::now()),
     goal_xyyaw_in_odom_({0.,0.,0.}),
+    prev_raw_control_cmd_({0.,0.}),
+    prev_filtered_control_cmd_({0.,0.}),
+    k_(1.0),  // You can adjust these coefficients
+    e_(0.0),  // You can adjust these coefficients
     controller_(nullptr)
 {
   if (!readParameters()) {
@@ -56,6 +60,10 @@ bool WaypointsFollowerControl::readParameters()
     if (!nodeHandle_.getParam("control/linear/max_vel", lin_vel_max_)) return false;
     if (!nodeHandle_.getParam("control/linear/min_vel", lin_vel_min_)) return false;
 
+    // Load smoothing parameters
+    if (!nodeHandle_.getParam("control/smoothing/k", k_)) return false;
+    if (!nodeHandle_.getParam("control/smoothing/e", e_)) return false;
+
     ROS_INFO_STREAM("******* Parameters *******");
     ROS_INFO_STREAM("* Topics:");
     ROS_INFO_STREAM("  * goal_topic: " << goalTopic_);
@@ -76,6 +84,10 @@ bool WaypointsFollowerControl::readParameters()
     ROS_INFO_STREAM("      * ki: " << ang_Ki_);
     ROS_INFO_STREAM("      * kd: " << ang_Kd_);
 
+    ROS_INFO_STREAM("  * Smoothing:");
+    ROS_INFO_STREAM("      * k: " << k_);
+    ROS_INFO_STREAM("      * e: " << e_);
+
     ROS_INFO_STREAM("**************************");
 
     return true;
@@ -93,7 +105,7 @@ void WaypointsFollowerControl::goalCallback(const geometry_msgs::PoseStamped& ms
     goal_xyyaw_in_odom_ << msg.pose.position.x, msg.pose.position.y, yaw; 
     bool print_goal = true;
     if (print_goal) {
-        ROS_INFO_THROTTLE(3.,"Goal | X: % .2f | Y: % .2f | | Yaw: % .2f ",
+        ROS_INFO_THROTTLE(1.,"Goal | X: % .2f | Y: % .2f | | Yaw: % .2f ",
                 goal_xyyaw_in_odom_[0], goal_xyyaw_in_odom_[1], goal_xyyaw_in_odom_[2]);
     }
 
@@ -113,7 +125,7 @@ void WaypointsFollowerControl::odomCallback(const nav_msgs::Odometry& msg)
 
     bool print_odom = true;
     if (print_odom) {
-        ROS_INFO_THROTTLE(3.,"Odometry | X: % .2f | Y: % .2f | | Yaw: % .2f ",
+        ROS_INFO_THROTTLE(1.,"Odometry | X: % .2f | Y: % .2f | | Yaw: % .2f ",
                 curr_xyyaw_in_odom_[0], curr_xyyaw_in_odom_[1], curr_xyyaw_in_odom_[2]);
     }
 
@@ -128,18 +140,39 @@ void WaypointsFollowerControl::odomCallback(const nav_msgs::Odometry& msg)
     Eigen::Vector2d control_cmd;
     controller_->getControl(curr_xyyaw_in_odom_,dt,control_cmd);
 
+    // TODO: smooth control_cmd[0] and control_cmd[0] with the prev raw and the prev_filtered
+    // filtered_control_cmd[0] = k*control_cmd[0] + e*prev_raw_control_cmd[0] + (1-e-k)*prev_filtered_control_cmd
+
+    // Smooth control_cmd with the previous values
+    filtered_control_cmd_[0] = k_ * control_cmd[0] + e_ * prev_raw_control_cmd_[0] + (1 - e_ - k_) * prev_filtered_control_cmd_[0];
+    filtered_control_cmd_[1] = k_ * control_cmd[1] + e_ * prev_raw_control_cmd_[1] + (1 - e_ - k_) * prev_filtered_control_cmd_[1];
+
+    // Update the previous command values
+    prev_raw_control_cmd_ = control_cmd;
+    prev_filtered_control_cmd_ = filtered_control_cmd_;
+
     geometry_msgs::Twist cmd_msg;
-    cmd_msg.linear.x = control_cmd[0];
+    cmd_msg.linear.x = filtered_control_cmd_[0];
     cmd_msg.linear.y = 0.0;
     cmd_msg.linear.z = 0.0;
-    cmd_msg.angular.z = control_cmd[1];
+    cmd_msg.angular.z = filtered_control_cmd_[1];
     cmd_msg.angular.y = 0.0;
     cmd_msg.angular.x = 0.0;
     cmd_publisher_.publish(cmd_msg);
 
+
+    // geometry_msgs::Twist cmd_msg;
+    // cmd_msg.linear.x = control_cmd[0];
+    // cmd_msg.linear.y = 0.0;
+    // cmd_msg.linear.z = 0.0;
+    // cmd_msg.angular.z = control_cmd[1];
+    // cmd_msg.angular.y = 0.0;
+    // cmd_msg.angular.x = 0.0;
+    // cmd_publisher_.publish(cmd_msg);
+
     bool print_cmd = true;
     if (print_cmd) {
-        ROS_INFO_THROTTLE(3.,"Command | X: % .2f | Y: % .2f | Z: % .2f | Roll: % .2f | "
+        ROS_INFO_THROTTLE(1.,"Command | X: % .2f | Y: % .2f | Z: % .2f | Roll: % .2f | "
                 "Pitch: % .2f | Yaw: % .2f ",
                 cmd_msg.linear.x, cmd_msg.linear.y, cmd_msg.linear.z,
                 cmd_msg.angular.x, cmd_msg.angular.y, cmd_msg.angular.z);
