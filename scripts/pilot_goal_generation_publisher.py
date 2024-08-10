@@ -183,7 +183,7 @@ class BaseGoalGenerator:
 
         self.transformed_pose = None
         self.transformed_pose_smoothed = None 
-        self.smooth_goal_pos_filter = MovingWindowFilter(window_size=3,data_dim=3)
+        self.smooth_goal_pos_filter = MovingWindowFilter(window_size=5,data_dim=3)
         self.smooth_goal_ori_filter = MovingWindowFilter(window_size=3,data_dim=4)
 
         self.prev_filtered_action = [0,0,0]
