@@ -187,7 +187,7 @@ class BaseGoalGenerator:
         self.smooth_goal_ori_filter = MovingWindowFilter(window_size=3,data_dim=4)
 
         self.prev_filtered_action = [0,0,0]
-        self.k = 0.35
+        self.k = 0.9
         
         rospy.on_shutdown(self.shutdownhook)
 
