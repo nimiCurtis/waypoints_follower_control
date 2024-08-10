@@ -20,8 +20,10 @@ from zed_interfaces.msg import ObjectsStamped
 from nav_msgs.msg import Odometry
 
 from pilot_deploy.inference import PilotAgent, get_inference_config
+
 from pilot_utils.transforms import transform_images, ObservationTransform
 from pilot_utils.deploy.deploy_utils import msg_to_pil
+from pilot_utils.deploy.modules import MovingWindowFilter
 from pilot_utils.utils import tic, toc, from_numpy, normalize_data, xy_to_d_cos_sin, clip_angle
 from pilot_utils.data.data_utils import to_local_coords
 
@@ -180,6 +182,9 @@ class BaseGoalGenerator:
         self.base_frame = params["base_frame"]
 
         self.transformed_pose = None
+        self.transformed_pose_smoothed = None 
+        self.smooth_goal_pos_filter = MovingWindowFilter(window_size=3,data_dim=3)
+        self.smooth_goal_ori_filter = MovingWindowFilter(window_size=3,data_dim=4)
 
         self.prev_filtered_action = [0,0,0]
         self.k = 0.35
@@ -242,6 +247,12 @@ class BaseGoalGenerator:
         Abstract method to be implemented by derived classes for handling topic callbacks.
         """
         raise NotImplementedError("Derived classes must implement this method.")
+    
+    def filter_pose(self, *args):
+        """
+        Abstract method to be implemented by derived classes
+        """
+        raise NotImplementedError("Derived classes must implement this method.")
 
 class GoalGenerator(BaseGoalGenerator):
     def __init__(self):
@@ -250,7 +261,6 @@ class GoalGenerator(BaseGoalGenerator):
         """
         super().__init__()
         self.goal_to_target = np.array([1.0, 0.0])
-
         # Subscribers and synchronizer for image and object detection topics
         self.image_sub = message_filters.Subscriber(self.params["image_topic"], Image)
         self.obj_det_sub = message_filters.Subscriber(self.params["obj_det_topic"], ObjectsStamped)
@@ -320,7 +330,7 @@ class GoalGenerator(BaseGoalGenerator):
                 prev_actions = np.concatenate([prev_waypoints[1:], prev_yaw[:, None]], axis=-1)
                 prev_actions = from_numpy(prev_actions)
 
-            
+
             target_context_mask = np.sum(target_context_queue == np.zeros((2,)), axis=1) == 2
             np_curr_rel_pos = np.zeros((target_context_queue.shape[0], self.target_dim))
             if self.target_dim == 3:
@@ -385,10 +395,42 @@ class GoalGenerator(BaseGoalGenerator):
         # Publish the transformed pose
         if self.transformed_pose is not None:
             dt_pub = (current_time - self.last_msg_time).to_sec()
-            self.goal_pub.publish(self.transformed_pose)
+            
+            self.transformed_pose_smoothed = self.filter_pose(self.transformed_pose)
+            self.goal_pub.publish(self.transformed_pose_smoothed)
             # rospy.loginfo(f"Publishing goal after {dt_pub} seconds.")
             self.last_msg_time = current_time
 
+
+    def filter_pose(self, pose_stamped: PoseStamped):
+            """
+            """
+            raw_pos = np.array([pose_stamped.pose.position.x,
+                                pose_stamped.pose.position.y,
+                                pose_stamped.pose.position.z])
+            
+            raw_or = np.array([pose_stamped.pose.orientation.x,
+                                pose_stamped.pose.orientation.y,
+                                pose_stamped.pose.orientation.z,
+                                pose_stamped.pose.orientation.w])
+            
+            
+            smoothed_pos = self.smooth_goal_pos_filter.calculate_average(raw_pos)
+            
+            pose_stamped_filtered = PoseStamped()
+            pose_stamped_filtered.header.seq = pose_stamped.header.seq
+            pose_stamped_filtered.header.stamp = pose_stamped.header.stamp
+            pose_stamped_filtered.header.frame_id = pose_stamped.header.frame_id
+            pose_stamped_filtered.pose.position.x = smoothed_pos[0]
+            pose_stamped_filtered.pose.position.y = smoothed_pos[1]
+            pose_stamped_filtered.pose.orientation.x = raw_or[0]
+            pose_stamped_filtered.pose.orientation.y = raw_or[1]
+            pose_stamped_filtered.pose.orientation.z = raw_or[2]
+            pose_stamped_filtered.pose.orientation.w = raw_or[3]
+            
+            return pose_stamped_filtered
+        
+        
 
 
 
