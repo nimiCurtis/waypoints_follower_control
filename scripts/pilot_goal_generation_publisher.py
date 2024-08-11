@@ -291,6 +291,7 @@ class GoalGenerator(BaseGoalGenerator):
         ## kalman filtering 
         self.observed_model_prediction = False
         self.goal_estimator = GoalPositionEstimator()
+        self.estimated_goal = np.zeros(3)
 
     def topics_callback(self, image_msg: Image, obj_det_msg: ObjectsStamped, odom_msg: Odometry = None):
         """
@@ -426,10 +427,10 @@ class GoalGenerator(BaseGoalGenerator):
         # except (LookupException, ConnectivityException, ExtrapolationException) as e:
         #     rospy.logwarn(f"Failed to transform pose: {str(e)}")
 
-        current_pose_in_odom = np.array(pos_yaw_from_odom(odom_msg=odom_msg))
+        # current_pose_in_odom = np.array(pos_yaw_from_odom(odom_msg=odom_msg))
         desired_pose_in_odom = np.array(pos_yaw_from_pose(pose_msg=desired_pose_stamped.pose))
 
-        e = desired_pose_in_odom - current_pose_in_odom
+        e = desired_pose_in_odom - self.estimated_goal
         e[2] = clip_angle(e[2])
 
         self.goal_estimator.update(model_prediction=model_prediction_in_odom,
