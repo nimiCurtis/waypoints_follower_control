@@ -1,4 +1,4 @@
-robot: turtlebot # turtlebot | go2 | nimrod
+robot: go2 # turtlebot | go2 | nimrod
 
 frames:
   odom_frame: odom
@@ -23,12 +23,16 @@ topics:
   obj_det_topic: /obj_detect_publisher_node/object
   odom_topic: /zedm/zed_node/odom
 
-# filter:
-#   moving_avg_filter:
-#     window_size:
+filter:
+  # moving_avg_filter:
+  #   window_size:
   
-#   kalman:
-#     k_B: 0.1
-#     sensor_variance: [1e-2,1e-2,1e-2]
+  kalman:
+    k_B: 0.1
+    sensor_variance: [1e-2,1e-2,1e-2]
+    moving_window_size: 15
+    alpha: 150
+
+
 
 

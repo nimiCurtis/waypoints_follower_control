@@ -3,7 +3,8 @@
 topics:
   # odom_topic: /turtlebot/odom
   odom_topic: /zedm/zed_node/odom
-  goal_topic: /goal_pose
+  # goal_topic: /goal_pose_model
+  goal_topic: /goal_pose_filtered
   cmd_topic: /wfc/cmd_vel
 
 # Control
@@ -22,7 +23,7 @@ control:
     kp: 0.1
     ki: 0.0
     kd: 0.0
-  
+
   smoothing:
     k: 0.25  # Coefficient for current command influence
     e: 0.1  # Coefficient for previous raw command influence
