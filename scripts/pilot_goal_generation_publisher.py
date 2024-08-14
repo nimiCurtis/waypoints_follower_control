@@ -186,8 +186,8 @@ class BaseGoalGenerator:
 
         self.observed_target = False
         self.transformed_pose = None
-        self.smooth_goal_filter = MovingWindowFilter(window_size=15,data_dim=3)
-        # self.smooth_goal_ori_filter = MovingWindowFilter(window_size=3,data_dim=1)
+        self.smooth_goal_filter = MovingWindowFilter(window_size=params["sensor_moving_window_size"],data_dim=3)
+
         rospy.on_shutdown(self.shutdownhook)                            
 
     def load_parameters(self):
@@ -211,6 +211,8 @@ class BaseGoalGenerator:
             "odom_topic": rospy.get_param(self.node_name + "/topics/odom_topic", default="/zedm/zed_node/odom"),
             "odom_frame": rospy.get_param(self.node_name + "/frames/odom_frame", default="odom"),
             "base_frame": rospy.get_param(self.node_name + "/frames/base_frame", default="base_link"),
+            "sensor_moving_window_size": rospy.get_param(self.node_name + "/filter/kalman/sensor_moving_window_size", default=5),
+
         }
 
         rospy.loginfo(f"******* {self.node_name} Parameters *******")
@@ -229,6 +231,9 @@ class BaseGoalGenerator:
         rospy.loginfo("* Frames:")
         rospy.loginfo("  * odom_frame: " + params["odom_frame"])
         rospy.loginfo("  * base_frame: " + params["base_frame"])
+
+        rospy.loginfo("* Filter:")
+        rospy.loginfo("  * sensor_moving_window_size: " + str(params["sensor_moving_window_size"]))
 
         rospy.loginfo("**************************")
 
@@ -434,6 +439,7 @@ class GoalGeneratorKalman(BaseGoalGenerator):
         self.sensor_variance = np.array([float(v) for v in params["kalman_sensor_variance"]])
         self.moving_window_size = params["kalman_moving_window_size"]
         self.alpha = params["kalman_alpha"]
+        self.error_threhsold = params['kalman_error_threshold']
 
         self.goal_estimator = GoalPositionEstimator(sensor_variance=self.sensor_variance,
                                                     moving_window_filter_size=self.moving_window_size,
@@ -450,10 +456,12 @@ class GoalGeneratorKalman(BaseGoalGenerator):
         
         params = {
             # New parameters from the 'filter' section
+            
             "kalman_k_B": rospy.get_param(self.node_name + "/filter/kalman/k_B", default=0.1),
             "kalman_sensor_variance": rospy.get_param(self.node_name + "/filter/kalman/sensor_variance", default=[1e-2, 1e-2, 1e-2]),
             "kalman_moving_window_size": rospy.get_param(self.node_name + "/filter/kalman/moving_window_size", default=15),
             "kalman_alpha": rospy.get_param(self.node_name + "/filter/kalman/alpha", default=150),
+            "kalman_error_threshold": rospy.get_param(self.node_name + "/filter/kalman/error_threshold", default=0.6),
         }
 
         # Print the newly added filter parameters
@@ -462,6 +470,8 @@ class GoalGeneratorKalman(BaseGoalGenerator):
         rospy.loginfo(f"  * kalman_sensor_variance: {params['kalman_sensor_variance']}")
         rospy.loginfo(f"  * kalman_moving_window_size: {params['kalman_moving_window_size']}")
         rospy.loginfo(f"  * kalman_alpha: {params['kalman_alpha']}")
+        rospy.loginfo(f"  * kalman_error_threshold: {params['kalman_error_threshold']}")
+
         rospy.loginfo("**************************")
         
         return params
@@ -611,7 +621,7 @@ class GoalGeneratorKalman(BaseGoalGenerator):
             rospy.loginfo(f"e2 norm: {e2:.4f}")
 
             alpha = self.alpha
-            v = np.round(np.exp(-alpha * (e2 - 1.)),4)
+            v = np.round(np.exp(-alpha * (e2 - self.error_threhsold )),4)
             prediction_mag = (1/(v + 1e-6))  # need to increase prediction covariance when e2 is big, decrease when small 
             correction_mag =  v # need to increase prediction covariance when e2 is small, decrease when big
             nprediction_mag = prediction_mag / (correction_mag + prediction_mag)

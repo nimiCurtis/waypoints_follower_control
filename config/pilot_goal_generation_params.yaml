@@ -24,14 +24,16 @@ topics:
   odom_topic: /zedm/zed_node/odom
 
 filter:
-  # moving_avg_filter:
-  #   window_size:
+
+  sensor_moving_window_size: 5
   
   kalman:
-    k_B: 0.1
-    sensor_variance: [1e-2,1e-2,1e-2]
+    enable: True
+    k_B: 0.03
+    sensor_variance: [1e-1,1e-1,1e-1]
     moving_window_size: 15
-    alpha: 150
+    alpha: 200
+    error_threshold: 0.6
 
 
 
