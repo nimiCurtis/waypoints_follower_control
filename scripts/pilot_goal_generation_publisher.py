@@ -28,21 +28,31 @@ from pilot_utils.utils import tic, toc, from_numpy, normalize_data, xy_to_d_cos_
 from pilot_utils.data.data_utils import to_local_coords
 
 def pos_yaw_from_odom(odom_msg:Odometry)->list:
+    """
+    Extracts position and yaw from a Odometry message.
+
+    Args:
+        odom_msg (Odometry): A ROS Odometry message.
+
+    Returns:
+        list: A list containing the x, y position and yaw.
+    """
     return pos_yaw_from_pose(odom_msg.pose.pose)
 
-def pos_yaw_from_pose(pose_msg:Pose)->list:
-    pos = [pose_msg.position.x,
-        pose_msg.position.y,
-        pose_msg.position.z]
-    ori = [pose_msg.orientation.x,
-        pose_msg.orientation.y,
-        pose_msg.orientation.z,
-        pose_msg.orientation.w]
-    
-    euler = euler_from_quaternion(ori)
-    yaw = euler[2]
-    
-    return [pos[0],pos[1],yaw]
+def pos_yaw_from_pose(pose_msg: Pose) -> list:
+    """
+    Extracts position and yaw from a Pose message.
+
+    Args:
+        pose_msg (Pose): A ROS Pose message.
+
+    Returns:
+        list: A list containing the x, y position and yaw.
+    """
+    pos = [pose_msg.position.x, pose_msg.position.y, pose_msg.position.z]
+    ori = [pose_msg.orientation.x, pose_msg.orientation.y, pose_msg.orientation.z, pose_msg.orientation.w]
+    yaw = euler_from_quaternion(ori)[2]
+    return [pos[0], pos[1], yaw]
 
 def create_path_msg(waypoints: List[Tuple], frame_id: str) -> Path:
     """
@@ -126,15 +136,16 @@ class BaseGoalGenerator:
         """
         rospy.init_node('pilot_goal_generation_publisher', anonymous=True)
         self.node_name = rospy.get_name()
+
         # Load parameters
-        params = self.load_parameters()
-        self.params = params
+        self.params = self.load_parameters()
 
         # Get inference configuration
-        data_cfg, datasets_cfg, policy_model_cfg, vision_encoder_cfg, linear_encoder_cfg, device = get_inference_config(params["model_name"])
+        data_cfg, datasets_cfg, policy_model_cfg, vision_encoder_cfg, linear_encoder_cfg, device = get_inference_config(self.params["model_name"])
         self.image_size = data_cfg.image_size
         self.max_depth = datasets_cfg.max_depth
 
+        # Timing attributes
         current_time = rospy.Time.now()
         self.last_collect_time = current_time
         self.last_inference_time = current_time
@@ -143,52 +154,54 @@ class BaseGoalGenerator:
         # ROS publishers
         self.path_pub = rospy.Publisher('/poses_path', Path, queue_size=10)
 
-
+        # Sequence counter for messages
         self.seq = 1
 
         # TF buffer and listener
         self.tf_buffer = MyBuffer()
 
-        self.context_size = data_cfg.context_size
-        self.action_context_size = data_cfg.action_context_size + 1 if data_cfg.action_context_size > 0 else data_cfg.action_context_size
-        self.target_context = data_cfg.target_context
-        self.target_dim = data_cfg.target_dim
-        
-        # Context queues
-        self.context_queue: Deque = deque(maxlen=self.context_size + 1)
-        self.target_context_queue: Deque = deque(maxlen=self.context_size + 1 if self.target_context else 1) # modify
-        self.action_context_queue: Deque = deque(maxlen=self.action_context_size)
-        self.goal_to_target = np.array([1.0, 0.0])
-        
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu") if device == "cuda" else "cpu"
-
         # Model initialization
-        self.wpt_i = params["wpt_i"]
-        self.model = PilotAgent(data_cfg=data_cfg,
-                                policy_model_cfg=policy_model_cfg,
-                                vision_encoder_cfg=vision_encoder_cfg,
-                                linear_encoder_cfg=linear_encoder_cfg,
-                                robot=params["robot"],
-                                wpt_i=params["wpt_i"],
-                                frame_rate=params["frame_rate"])
-
-        self.model.load(model_name=params["model_name"],model_version=params["model_version"])
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu") if device == "cuda" else "cpu"
+        self.wpt_i = self.params["wpt_i"]
+        self.model = PilotAgent(
+            data_cfg=data_cfg,
+            policy_model_cfg=policy_model_cfg,
+            vision_encoder_cfg=vision_encoder_cfg,
+            linear_encoder_cfg=linear_encoder_cfg,
+            robot=self.params["robot"],
+            wpt_i=self.params["wpt_i"],
+            frame_rate=self.params["frame_rate"]
+        )
+        self.model.load(model_name=self.params["model_name"], model_version=self.params["model_version"])
         self.model.to(device=device)
 
+        # Transform and context setup
         self.transform = ObservationTransform(data_cfg=data_cfg).get_transform("test")
+        self.context_size = data_cfg.context_size
+        self.action_context_size = data_cfg.action_context_size
+        self.target_context = data_cfg.target_context
+        self.target_dim = data_cfg.target_dim
 
-        self.frame_rate = params["frame_rate"]
-        self.inference_rate = params["inference_rate"]
+        self.context_queue = deque(maxlen=self.context_size + 1)
+        self.target_context_queue = deque(maxlen=self.context_size + 1 if self.target_context else 1)
+        self.action_context_queue = deque(maxlen=data_cfg.action_context_size + 1)
+
+        # Filter and goal settings
+        self.goal_to_target = np.array([1.0, 0.0])
+        self.observed_target = False
+        self.smooth_goal_filter = MovingWindowFilter(window_size=self.params["sensor_moving_window_size"], data_dim=3)
+
+        # Setup inference timing
+        self.frame_rate = self.params["frame_rate"]
+        self.inference_rate = self.params["inference_rate"]
         self.inference_times = deque(maxlen=self.inference_rate)
 
-        self.odom_frame = params["odom_frame"]
-        self.base_frame = params["base_frame"]
+        # Frames
+        self.odom_frame = self.params["odom_frame"]
+        self.base_frame = self.params["base_frame"]
 
-        self.observed_target = False
         self.transformed_pose = None
-        self.smooth_goal_filter = MovingWindowFilter(window_size=params["sensor_moving_window_size"],data_dim=3)
-
-        rospy.on_shutdown(self.shutdownhook)                            
+        rospy.on_shutdown(self.shutdownhook)                          
 
     def load_parameters(self):
         """
@@ -259,10 +272,17 @@ class BaseGoalGenerator:
         raise NotImplementedError("Derived classes must implement this method.")
 
     def _is_target_observed(self,obj_det_msg: ObjectsStamped)->bool:
-        if obj_det_msg.objects:
-            return True
-        else:
-            return False
+        """
+        Checks if a target is observed in the object detection message.
+
+        Args:
+            obj_det_msg (ObjectsStamped): Object detection message.
+
+        Returns:
+            bool: True if a target is observed, False otherwise.
+        """
+        return bool(obj_det_msg.objects)
+
 
 class GoalGenerator(BaseGoalGenerator):
     def __init__(self):
@@ -287,8 +307,8 @@ class GoalGenerator(BaseGoalGenerator):
 
         self.ats = message_filters.ApproximateTimeSynchronizer(
             fs=self.sync_topics_list,
-            queue_size=20,
-            slop=0.2)
+            queue_size=10,
+            slop=0.1)
         
         
         self.ats.registerCallback(self.topics_callback)
@@ -329,7 +349,7 @@ class GoalGenerator(BaseGoalGenerator):
             target_context_queue = np.array(self.target_context_queue)
             
             prev_actions = None
-            # action_context_queue = np.array(list(self.action_context_queue))
+
             if odom_msg is not None:
                 action_context_queue = np.array(self.action_context_queue)
                 
@@ -430,8 +450,8 @@ class GoalGeneratorKalman(BaseGoalGenerator):
 
         self.ats = message_filters.ApproximateTimeSynchronizer(
             fs=self.sync_topics_list,
-            queue_size=20,
-            slop=0.2)
+            queue_size=10,
+            slop=0.1)
 
         ## kalman filtering 
         # Initialize the filter parameters
