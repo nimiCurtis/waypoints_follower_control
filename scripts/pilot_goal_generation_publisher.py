@@ -186,7 +186,7 @@ class BaseGoalGenerator:
 
         self.observed_target = False
         self.transformed_pose = None
-        self.smooth_goal_filter = MovingWindowFilter(window_size=15,data_dim=3)
+        self.smooth_goal_filter = MovingWindowFilter(window_size=10,data_dim=3)
         # self.smooth_goal_ori_filter = MovingWindowFilter(window_size=3,data_dim=1)
         rospy.on_shutdown(self.shutdownhook)                            
 
@@ -657,6 +657,6 @@ class GoalGeneratorKalman(BaseGoalGenerator):
 
 if __name__ == '__main__':
     # Start node
-    goal_gen = GoalGeneratorKalman()
-    # goal_gen = GoalGenerator()
+    # goal_gen = GoalGeneratorKalman()
+    goal_gen = GoalGenerator()
     rospy.spin()

@@ -4,11 +4,11 @@ frames:
   odom_frame: odom
   # base_frame: base
 
-  base_frame: base
+  base_frame: base_footprint
 
 model: 
   # model_name: pilot-go-to-the-pic-pidiff_2024-06-25_09-43-16
-  model_name: pilot_bsz128_c2_ac2_gcp0.3_mdp0.3_ddim_2024-08-10_12-56-14
+  model_name: pilot_bsz128_c2_ac2_gcp0.3_mdp0.3_ph82024-08-13_20-04-22
   model_version: latest # best_model | latest | <epoch_number> (int)
   # model_name: pilot-turtle-static-follower_2024-07-03_00-16-16
 
