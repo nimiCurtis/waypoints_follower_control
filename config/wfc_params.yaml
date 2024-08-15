@@ -25,5 +25,5 @@ control:
     kd: 0.0
 
   smoothing:
-    k: 0.25  # Coefficient for current command influence
+    k: 0.2  # Coefficient for current command influence
     e: 0.1  # Coefficient for previous raw command influence
