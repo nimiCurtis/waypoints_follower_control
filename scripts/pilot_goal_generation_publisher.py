@@ -367,7 +367,7 @@ class GoalGenerator(BaseGoalGenerator):
             self.inference_times.append(dt_infer)
             avg_inference_time = np.mean(self.inference_times)
             rospy.loginfo_throttle(10, f"Average inference time (last {len(self.inference_times)}): {avg_inference_time:.4f} seconds.")
-
+            
             dx, dy, hx, hy = waypoints[self.wpt_i]
             yaw = clip_angle(np.arctan2(hy, hx)) 
             dx, dy, yaw = self.smooth_goal_filter.calculate_average(np.array([dx,dy,yaw]))
@@ -657,6 +657,6 @@ class GoalGeneratorKalman(BaseGoalGenerator):
 
 if __name__ == '__main__':
     # Start node
-    goal_gen = GoalGeneratorKalman()
-    # goal_gen = GoalGenerator()
+    # goal_gen = GoalGeneratorKalman()
+    goal_gen = GoalGenerator()
     rospy.spin()
