@@ -216,7 +216,7 @@ class BaseGoalGenerator:
 
         params = {
             "robot": rospy.get_param(self.node_name + "/robot", default="turtlebot"),
-            "model_name": rospy.get_param(self.node_name + "/model/model_name", default="pilot_bsz128_c6_ac3_gcp0.5_mdp0.5_ddim_2024-08-10_11-17-30"),
+            "model_name": rospy.get_param(self.node_name + "/model/model_name", default="pilot_bsz128_c2_ac2_gcp0.3_mdp0.3_ph82024-08-13_20-04-22"),
             "model_version": str(rospy.get_param(self.node_name + "/model/model_version", default="best_model")),
             "frame_rate": rospy.get_param(self.node_name + "/model/frame_rate", default=7),
             "inference_rate": rospy.get_param(self.node_name + "/model/inference_rate", default=5),
@@ -394,7 +394,7 @@ class GoalGenerator(BaseGoalGenerator):
             self.inference_times.append(dt_infer)
             avg_inference_time = np.mean(self.inference_times)
             rospy.loginfo_throttle(10, f"Average inference time (last {len(self.inference_times)}): {avg_inference_time:.4f} seconds.")
-
+            
             dx, dy, hx, hy = waypoints[self.wpt_i]
             yaw = clip_angle(np.arctan2(hy, hx)) 
             dx, dy, yaw = self.smooth_goal_filter.calculate_average(np.array([dx,dy,yaw]))
