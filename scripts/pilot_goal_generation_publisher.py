@@ -6,7 +6,7 @@ import numpy as np
 import torch
 
 import rospy
-from geometry_msgs.msg import PoseStamped, Pose
+from geometry_msgs.msg import PoseStamped, Pose 
 from nav_msgs.msg import Path
 from sensor_msgs.msg import Image
 from tf.transformations import quaternion_from_euler, euler_from_quaternion
@@ -54,28 +54,7 @@ def pos_yaw_from_pose(pose_msg: Pose) -> list:
     yaw = euler_from_quaternion(ori)[2]
     return [pos[0], pos[1], yaw]
 
-def create_path_msg(waypoints: List[Tuple], frame_id: str) -> Path:
-    """
-    Creates a ROS Path message from a list of waypoints.
 
-    Args:
-        waypoints (list of tuple): List of waypoints, where each waypoint is a tuple (x, y, yaw).
-        frame_id (str): The frame of reference for the path.
-
-    Returns:
-        Path: A ROS Path message containing the waypoints.
-    """
-    path_msg = Path()
-    path_msg.header.frame_id = frame_id
-    path_msg.header.stamp = rospy.Time.now()
-
-    for seq, wp in enumerate(waypoints):
-        x, y, hx, hy = wp
-        yaw = clip_angle(np.arctan2(hy, hx))
-        pose_stamped = create_pose_stamped(x, y, yaw, path_msg.header.frame_id, seq, rospy.Time.now())
-        path_msg.poses.append(pose_stamped)
-
-    return path_msg
 
 def create_pose_stamped(x: float, y: float, yaw: float, frame_id: str, seq: int, stamp: rospy.Time) -> PoseStamped:
     """
@@ -107,6 +86,33 @@ def create_pose_stamped(x: float, y: float, yaw: float, frame_id: str, seq: int,
 
 def do_transform_pose_stamped(pose_stamped, transform):
     return tf2_geometry_msgs.do_transform_pose(pose_stamped, transform)
+
+
+def create_path_msg(waypoints: List[Tuple], frame_id: str, transform, current_time) -> Path:
+    """
+    Creates a ROS Path message from a list of waypoints.
+
+    Args:
+        waypoints (list of tuple): List of waypoints, where each waypoint is a tuple (x, y, yaw).
+        frame_id (str): The frame of reference for the path.
+
+    Returns:
+        Path: A ROS Path message containing the waypoints.
+    """
+    path_msg = Path()
+    path_msg.header.frame_id = frame_id
+    path_msg.header.stamp = current_time
+
+    for seq, wp in enumerate(waypoints):
+        x, y, hx, hy = wp
+        yaw = clip_angle(np.arctan2(hy, hx))
+        pose_stamped = create_pose_stamped(x, y, yaw, path_msg.header.frame_id, seq, current_time)
+        
+        pose_stamped = do_transform_pose_stamped(pose_stamped=pose_stamped,transform=transform)
+        
+        path_msg.poses.append(pose_stamped)
+
+    return path_msg
 
 class MyBuffer(BufferInterface):
     def __init__(self):
@@ -200,10 +206,15 @@ class BaseGoalGenerator:
         self.odom_frame = self.params["odom_frame"]
         self.base_frame = self.params["base_frame"]
 
-        self.transformed_pose = None
+        self.transformed_pose = PoseStamped()
+        self.ros_transform = None
+        self.path = Path()
         self.smooth_goal_filter = MovingWindowFilter(window_size=10,data_dim=3)
         # self.smooth_goal_ori_filter = MovingWindowFilter(window_size=3,data_dim=1)
-        rospy.on_shutdown(self.shutdownhook)                            
+        rospy.on_shutdown(self.shutdownhook)
+
+
+                            
 
     def load_parameters(self):
         """
@@ -216,10 +227,10 @@ class BaseGoalGenerator:
 
         params = {
             "robot": rospy.get_param(self.node_name + "/robot", default="turtlebot"),
-            "model_name": rospy.get_param(self.node_name + "/model/model_name", default="pilot_bsz128_c2_ac2_gcp0.3_mdp0.3_ph82024-08-13_20-04-22"),
+            "model_name": rospy.get_param(self.node_name + "/model/model_name", default="pilot_bsz128_c4_ac3_gcp0.5_mdp0.25_ph_82024-08-19_18-10-30"),
             "model_version": str(rospy.get_param(self.node_name + "/model/model_version", default="best_model")),
             "frame_rate": rospy.get_param(self.node_name + "/model/frame_rate", default=7),
-            "inference_rate": rospy.get_param(self.node_name + "/model/inference_rate", default=5),
+            "inference_rate": rospy.get_param(self.node_name + "/model/inference_rate", default=3),
             "wpt_i": rospy.get_param(self.node_name + "/model/wpt_i", default=2),
             "image_topic": rospy.get_param(self.node_name + "/topics/image_topic", default="/zedm/zed_node/depth/depth_registered"),
             "obj_det_topic": rospy.get_param(self.node_name + "/topics/obj_det_topic", default="/obj_detect_publisher_node/object"),
@@ -370,7 +381,7 @@ class GoalGenerator(BaseGoalGenerator):
                 np_curr_rel_pos[~target_context_mask, 0] = normalize_data(data=np_curr_rel_pos[~target_context_mask, 0], stats={'min': -self.max_depth / 1000, 'max': self.max_depth / 1000})
             elif self.target_dim == 2:
                 np_curr_rel_pos[~target_context_mask] = normalize_data(data=target_context_queue[~target_context_mask], stats={'min': -self.max_depth / 1000, 'max': self.max_depth / 1000})
-            
+
 
             target_context_queue_tensor = from_numpy(np_curr_rel_pos)
 
@@ -394,25 +405,41 @@ class GoalGenerator(BaseGoalGenerator):
             self.inference_times.append(dt_infer)
             avg_inference_time = np.mean(self.inference_times)
             rospy.loginfo_throttle(10, f"Average inference time (last {len(self.inference_times)}): {avg_inference_time:.4f} seconds.")
-            
-            dx, dy, hx, hy = waypoints[self.wpt_i]
-            yaw = clip_angle(np.arctan2(hy, hx)) 
-            dx, dy, yaw = self.smooth_goal_filter.calculate_average(np.array([dx,dy,yaw]))
-            yaw = clip_angle(yaw)
-            
-            # Create and transform pose
-            pose_stamped = create_pose_stamped(dx, dy, yaw, self.base_frame, self.seq, current_time)
-            self.seq += 1
-            rospy.loginfo_throttle(1, f"Planner running. Goal generated ([dx, dy, yaw]): [{dx:.4f}, {dy:.4f}, {yaw:.4f}]")
+
             try:
+                self.ros_transform = self.tf_buffer.lookup_transform(target_frame=self.odom_frame,
+                                                                source_frame=self.base_frame,
+                                                                time = current_time,
+                                                                timeout=rospy.Duration(0.2))
+                
+                
+                self.path = create_path_msg(waypoints=waypoints,frame_id=self.odom_frame,transform = self.ros_transform, current_time = current_time)
+                
+                
                 # Transform the pose to the odom frame
-                self.transformed_pose = self.tf_buffer.transform(object_stamped=pose_stamped,
-                                                                target_frame=self.odom_frame,
-                                                                timeout=rospy.Duration(0.2),
-                                                                )
+                # self.transformed_pose = self.tf_buffer.transform(object_stamped=pose_stamped,
+                #                                                 target_frame=self.odom_frame,
+                #                                                 timeout=rospy.Duration(0.2),
+                #                                                 )
+
+                self.transformed_pose = self.path.poses[self.wpt_i]
+                
+                
             except (LookupException, ConnectivityException, ExtrapolationException) as e:
                 rospy.logwarn(f"Failed to transform pose: {str(e)}")
                 self.transformed_pose = None  # Ensure the transformed_pose is not used if transformation fails
+                self.path = None
+            
+            # dx, dy, hx, hy = waypoints[self.wpt_i]
+            # yaw = clip_angle(np.arctan2(hy, hx)) 
+            # dx, dy, yaw = self.smooth_goal_filter.calculate_average(np.array([dx,dy,yaw]))
+            # yaw = clip_angle(yaw)
+            
+            # Create and transform pose
+            # pose_stamped = create_pose_stamped(dx, dy, yaw, self.base_frame, self.seq, current_time)
+            self.seq += 1
+            # rospy.loginfo_throttle(1, f"Planner running. Goal generated ([dx, dy, yaw]): [{dx:.4f}, {dy:.4f}, {yaw:.4f}]")
+
 
         # Publish the transformed pose
         if self.transformed_pose is not None:
@@ -420,6 +447,7 @@ class GoalGenerator(BaseGoalGenerator):
             
             # self.transformed_pose_smoothed = self.filter_pose(self.transformed_pose)
             self.goal_pub_sensor.publish(self.transformed_pose)
+            self.path_pub.publish(self.path)
             # rospy.loginfo(f"Publishing goal after {dt_pub} seconds.")
             self.last_msg_time = current_time
 
