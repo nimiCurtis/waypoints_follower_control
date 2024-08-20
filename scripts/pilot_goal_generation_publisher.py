@@ -484,7 +484,7 @@ class GoalGenerator(BaseGoalGenerator):
                 quaternions_wxyz=quaternions_wxyz,
                 timestamps=timestamps,
                 current_timestamp=current_time.to_sec(),
-                smoothen_time=1.0  # Smooth transition over 1 second
+                smoothen_time=1.5  # Smooth transition over 1 second
             )
             
             # Retrieve the smoothed trajectory for publishing
