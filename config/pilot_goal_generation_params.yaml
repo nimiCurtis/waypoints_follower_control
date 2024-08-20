@@ -4,7 +4,7 @@ frames:
   odom_frame: odom
   # base_frame: base
 
-  base_frame: base_footprint
+  base_frame: base_link
 
 model: 
   # model_name: pilot-go-to-the-pic-pidiff_2024-06-25_09-43-16
@@ -14,7 +14,7 @@ model:
 
   frame_rate: 7 # NOTE: please pay atteniton that this value is similar to the sampling rate
                 # of the data collected to train the policy
-  inference_rate: 5
+  inference_rate: 3
   wpt_i: 2
 
 topics: 
