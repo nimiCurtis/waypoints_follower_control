@@ -88,7 +88,7 @@ def do_transform_pose_stamped(pose_stamped, transform):
     return tf2_geometry_msgs.do_transform_pose(pose_stamped, transform)
 
 
-def create_path_msg(waypoints: List[Tuple], frame_id: str, transform, current_time) -> Path:
+def create_path_msg(waypoints: List[Tuple], path_frame_id: str,waypoints_frame_id: str, transform, current_time) -> Path:
     """
     Creates a ROS Path message from a list of waypoints.
 
@@ -100,13 +100,13 @@ def create_path_msg(waypoints: List[Tuple], frame_id: str, transform, current_ti
         Path: A ROS Path message containing the waypoints.
     """
     path_msg = Path()
-    path_msg.header.frame_id = frame_id
+    path_msg.header.frame_id = path_frame_id
     path_msg.header.stamp = current_time
 
     for seq, wp in enumerate(waypoints):
         x, y, hx, hy = wp
         yaw = clip_angle(np.arctan2(hy, hx))
-        pose_stamped = create_pose_stamped(x, y, yaw, path_msg.header.frame_id, seq, current_time)
+        pose_stamped = create_pose_stamped(x, y, yaw, waypoints_frame_id, seq, current_time)
         
         pose_stamped = do_transform_pose_stamped(pose_stamped=pose_stamped,transform=transform)
         
@@ -212,9 +212,6 @@ class BaseGoalGenerator:
         self.smooth_goal_filter = MovingWindowFilter(window_size=10,data_dim=3)
         # self.smooth_goal_ori_filter = MovingWindowFilter(window_size=3,data_dim=1)
         rospy.on_shutdown(self.shutdownhook)
-
-
-                            
 
     def load_parameters(self):
         """
@@ -413,7 +410,7 @@ class GoalGenerator(BaseGoalGenerator):
                                                                 timeout=rospy.Duration(0.2))
                 
                 
-                self.path = create_path_msg(waypoints=waypoints,frame_id=self.odom_frame,transform = self.ros_transform, current_time = current_time)
+                self.path = create_path_msg(waypoints=waypoints,path_frame_id=self.odom_frame,waypoints_frame_id=self.base_frame,transform = self.ros_transform, current_time = current_time)
                 
                 
                 # Transform the pose to the odom frame
