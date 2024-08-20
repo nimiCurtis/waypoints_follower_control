@@ -23,7 +23,7 @@ from pilot_deploy.inference import PilotAgent, get_inference_config
 
 from pilot_utils.transforms import transform_images, ObservationTransform
 from pilot_utils.deploy.deploy_utils import msg_to_pil
-from pilot_utils.deploy.modules import MovingWindowFilter, GoalPositionEstimator
+from pilot_utils.deploy.modules import MovingWindowFilter, GoalPositionEstimator, RealtimeTraj
 from pilot_utils.utils import tic, toc, from_numpy, normalize_data, xy_to_d_cos_sin, clip_angle
 from pilot_utils.data.data_utils import to_local_coords
 
@@ -54,9 +54,38 @@ def pos_yaw_from_pose(pose_msg: Pose) -> list:
     yaw = euler_from_quaternion(ori)[2]
     return [pos[0], pos[1], yaw]
 
+def do_transform_pose_stamped(pose_stamped, transform):
+    return tf2_geometry_msgs.do_transform_pose(pose_stamped, transform)
 
+# def create_pose_stamped(x: float, y: float, yaw: float, frame_id: str, seq: int, stamp: rospy.Time) -> PoseStamped:
+#     """
+#     Creates a ROS PoseStamped message given position and orientation.
 
-def create_pose_stamped(x: float, y: float, yaw: float, frame_id: str, seq: int, stamp: rospy.Time) -> PoseStamped:
+#     Args:
+#         x (float): The x-coordinate of the position.
+#         y (float): The y-coordinate of the position.
+#         yaw (float): The orientation (yaw) in radians.
+#         frame_id (str): The frame of reference for the pose.
+#         seq (int): Sequence number of the pose.
+#         stamp (rospy.Time): Timestamp for the pose.
+
+#     Returns:
+#         PoseStamped: A ROS PoseStamped message containing the position and orientation.
+#     """
+#     quaternion = quaternion_from_euler(0, 0, yaw)
+#     pose_stamped = PoseStamped()
+#     pose_stamped.header.seq = seq
+#     pose_stamped.header.stamp = stamp
+#     pose_stamped.header.frame_id = frame_id
+#     pose_stamped.pose.position.x = x
+#     pose_stamped.pose.position.y = y
+#     pose_stamped.pose.orientation.x = quaternion[0]
+#     pose_stamped.pose.orientation.y = quaternion[1]
+#     pose_stamped.pose.orientation.z = quaternion[2]
+#     pose_stamped.pose.orientation.w = quaternion[3]
+#     return pose_stamped
+
+def create_pose_stamped(translation, quaternion, frame_id: str, seq: int, stamp: float) -> PoseStamped:
     """
     Creates a ROS PoseStamped message given position and orientation.
 
@@ -71,24 +100,50 @@ def create_pose_stamped(x: float, y: float, yaw: float, frame_id: str, seq: int,
     Returns:
         PoseStamped: A ROS PoseStamped message containing the position and orientation.
     """
-    quaternion = quaternion_from_euler(0, 0, yaw)
+    
     pose_stamped = PoseStamped()
     pose_stamped.header.seq = seq
-    pose_stamped.header.stamp = stamp
+    pose_stamped.header.stamp = rospy.Time(stamp)
     pose_stamped.header.frame_id = frame_id
-    pose_stamped.pose.position.x = x
-    pose_stamped.pose.position.y = y
+    pose_stamped.pose.position.x = translation[0]
+    pose_stamped.pose.position.y = translation[1]
     pose_stamped.pose.orientation.x = quaternion[0]
     pose_stamped.pose.orientation.y = quaternion[1]
     pose_stamped.pose.orientation.z = quaternion[2]
     pose_stamped.pose.orientation.w = quaternion[3]
     return pose_stamped
 
-def do_transform_pose_stamped(pose_stamped, transform):
-    return tf2_geometry_msgs.do_transform_pose(pose_stamped, transform)
 
 
-def create_path_msg(waypoints: List[Tuple], frame_id: str, transform, current_time) -> Path:
+# def create_path_msg(waypoints: List[Tuple], frame_id: str, dt: float, transform) -> Path:
+#     """
+#     Creates a ROS Path message from a list of waypoints.
+
+#     Args:
+#         waypoints (list of tuple): List of waypoints, where each waypoint is a tuple (x, y, yaw).
+#         frame_id (str): The frame of reference for the path.
+
+#     Returns:
+#         Path: A ROS Path message containing the waypoints.
+#     """
+    
+#     path_msg = Path()
+#     path_msg.header.frame_id = frame_id
+#     current_time  = rospy.Time.now()
+#     path_msg.header.stamp = current_time
+
+#     for seq, wp in enumerate(waypoints):
+#         x, y, hx, hy = wp
+#         yaw = clip_angle(np.arctan2(hy, hx))
+        
+#         timestamp = current_time + rospy.Duration((seq+1) * dt)
+#         pose_stamped = create_pose_stamped(x, y, yaw, path_msg.header.frame_id, seq, timestamp)
+#         pose_stamped = do_transform_pose_stamped(pose_stamped=pose_stamped,transform=transform)
+#         path_msg.poses.append(pose_stamped)
+
+#     return path_msg
+
+def create_path_msg(waypoints:zip, waypoints_frame , path_frame_id, transform) -> Path:
     """
     Creates a ROS Path message from a list of waypoints.
 
@@ -99,20 +154,29 @@ def create_path_msg(waypoints: List[Tuple], frame_id: str, transform, current_ti
     Returns:
         Path: A ROS Path message containing the waypoints.
     """
+    
     path_msg = Path()
-    path_msg.header.frame_id = frame_id
+    path_msg.header.frame_id = path_frame_id
+    current_time  = rospy.Time.now()
     path_msg.header.stamp = current_time
 
-    for seq, wp in enumerate(waypoints):
-        x, y, hx, hy = wp
-        yaw = clip_angle(np.arctan2(hy, hx))
-        pose_stamped = create_pose_stamped(x, y, yaw, path_msg.header.frame_id, seq, current_time)
-        
+    seq = 0 
+    for translation, quaternion, timestamp in waypoints:
+        pose_stamped = create_pose_stamped(translation, quaternion, waypoints_frame, seq, timestamp)
         pose_stamped = do_transform_pose_stamped(pose_stamped=pose_stamped,transform=transform)
-        
         path_msg.poses.append(pose_stamped)
+        seq+=1
+    # for seq, wp in enumerate(waypoints):
+    #     x, y, hx, hy = wp
+    #     yaw = clip_angle(np.arctan2(hy, hx))
+        
+    #     timestamp = current_time + rospy.Duration((seq+1) )
+    #     pose_stamped = create_pose_stamped(x, y, yaw, path_msg.header.frame_id, seq, timestamp)
+    #     pose_stamped = do_transform_pose_stamped(pose_stamped=pose_stamped,transform=transform)
+    #     path_msg.poses.append(pose_stamped)
 
     return path_msg
+
 
 class MyBuffer(BufferInterface):
     def __init__(self):
@@ -237,8 +301,7 @@ class BaseGoalGenerator:
             "odom_topic": rospy.get_param(self.node_name + "/topics/odom_topic", default="/zedm/zed_node/odom"),
             "odom_frame": rospy.get_param(self.node_name + "/frames/odom_frame", default="odom"),
             "base_frame": rospy.get_param(self.node_name + "/frames/base_frame", default="base_link"),
-            "sensor_moving_window_size": rospy.get_param(self.node_name + "/filter/kalman/sensor_moving_window_size", default=5),
-
+            "sensor_moving_window_size": rospy.get_param(self.node_name + "/filter/sensor_moving_window_size", default=1),
         }
 
         rospy.loginfo(f"******* {self.node_name} Parameters *******")
@@ -325,6 +388,9 @@ class GoalGenerator(BaseGoalGenerator):
         
         
         self.ats.registerCallback(self.topics_callback)
+        
+        # Initialize RealtimeTraj for managing and updating the trajectory
+        self.realtime_traj = RealtimeTraj()
 
         rospy.loginfo("GoalGenerator initialized successfully.")
 
@@ -406,6 +472,27 @@ class GoalGenerator(BaseGoalGenerator):
             avg_inference_time = np.mean(self.inference_times)
             rospy.loginfo_throttle(10, f"Average inference time (last {len(self.inference_times)}): {avg_inference_time:.4f} seconds.")
 
+
+            # Extract translations and quaternions from waypoints
+            translations = np.array([[wp[0], wp[1], 0.0] for wp in waypoints])  # Assuming z=0.0
+            quaternions_wxyz = np.array([quaternion_from_euler(0, 0, np.arctan2(wp[3], wp[2])) for wp in waypoints])
+            timestamps = np.array([current_time.to_sec() + ((i + 1) / self.frame_rate) for i in range(len(waypoints))])
+
+            # Update the trajectory with the new predictions using RealtimeTraj
+            self.realtime_traj.update(
+                translations=translations,
+                quaternions_wxyz=quaternions_wxyz,
+                timestamps=timestamps,
+                current_timestamp=current_time.to_sec(),
+                smoothen_time=1.0  # Smooth transition over 1 second
+            )
+            
+            # Retrieve the smoothed trajectory for publishing
+            smoothed_translations, smoothed_quaternions = self.realtime_traj.interpolate_traj(timestamps)
+            
+            
+            
+            
             try:
                 self.ros_transform = self.tf_buffer.lookup_transform(target_frame=self.odom_frame,
                                                                 source_frame=self.base_frame,
@@ -413,7 +500,12 @@ class GoalGenerator(BaseGoalGenerator):
                                                                 timeout=rospy.Duration(0.2))
                 
                 
-                self.path = create_path_msg(waypoints=waypoints,frame_id=self.odom_frame,transform = self.ros_transform, current_time = current_time)
+                # Create and publish the updated path
+                self.path = create_path_msg(zip(smoothed_translations, smoothed_quaternions, timestamps), waypoints_frame = self.base_frame,
+                                        path_frame_id=self.odom_frame, transform=self.ros_transform)
+                
+                
+                # self.path = create_path_msg(waypoints=waypoints,frame_id=self.odom_frame,dt=1/self.frame_rate, transform = self.ros_transform)
                 
                 
                 # Transform the pose to the odom frame
