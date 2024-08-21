@@ -57,35 +57,8 @@ def pos_yaw_from_pose(pose_msg: Pose) -> list:
 def do_transform_pose_stamped(pose_stamped, transform):
     return tf2_geometry_msgs.do_transform_pose(pose_stamped, transform)
 
-# def create_pose_stamped(x: float, y: float, yaw: float, frame_id: str, seq: int, stamp: rospy.Time) -> PoseStamped:
-#     """
-#     Creates a ROS PoseStamped message given position and orientation.
 
-#     Args:
-#         x (float): The x-coordinate of the position.
-#         y (float): The y-coordinate of the position.
-#         yaw (float): The orientation (yaw) in radians.
-#         frame_id (str): The frame of reference for the pose.
-#         seq (int): Sequence number of the pose.
-#         stamp (rospy.Time): Timestamp for the pose.
-
-#     Returns:
-#         PoseStamped: A ROS PoseStamped message containing the position and orientation.
-#     """
-#     quaternion = quaternion_from_euler(0, 0, yaw)
-#     pose_stamped = PoseStamped()
-#     pose_stamped.header.seq = seq
-#     pose_stamped.header.stamp = stamp
-#     pose_stamped.header.frame_id = frame_id
-#     pose_stamped.pose.position.x = x
-#     pose_stamped.pose.position.y = y
-#     pose_stamped.pose.orientation.x = quaternion[0]
-#     pose_stamped.pose.orientation.y = quaternion[1]
-#     pose_stamped.pose.orientation.z = quaternion[2]
-#     pose_stamped.pose.orientation.w = quaternion[3]
-#     return pose_stamped
-
-def create_pose_stamped(translation, quaternion, frame_id: str, seq: int, stamp: float) -> PoseStamped:
+def create_pose_stamped(translation, quaternion, frame_id: str, seq: int, stamp: rospy.Time) -> PoseStamped:
     """
     Creates a ROS PoseStamped message given position and orientation.
 
@@ -103,7 +76,7 @@ def create_pose_stamped(translation, quaternion, frame_id: str, seq: int, stamp:
     
     pose_stamped = PoseStamped()
     pose_stamped.header.seq = seq
-    pose_stamped.header.stamp = rospy.Time(stamp)
+    pose_stamped.header.stamp = stamp #rospy.Time(stamp)
     pose_stamped.header.frame_id = frame_id
     pose_stamped.pose.position.x = translation[0]
     pose_stamped.pose.position.y = translation[1]
@@ -113,37 +86,7 @@ def create_pose_stamped(translation, quaternion, frame_id: str, seq: int, stamp:
     pose_stamped.pose.orientation.w = quaternion[3]
     return pose_stamped
 
-
-
-# def create_path_msg(waypoints: List[Tuple], frame_id: str, dt: float, transform) -> Path:
-#     """
-#     Creates a ROS Path message from a list of waypoints.
-
-#     Args:
-#         waypoints (list of tuple): List of waypoints, where each waypoint is a tuple (x, y, yaw).
-#         frame_id (str): The frame of reference for the path.
-
-#     Returns:
-#         Path: A ROS Path message containing the waypoints.
-#     """
-    
-#     path_msg = Path()
-#     path_msg.header.frame_id = frame_id
-#     current_time  = rospy.Time.now()
-#     path_msg.header.stamp = current_time
-
-#     for seq, wp in enumerate(waypoints):
-#         x, y, hx, hy = wp
-#         yaw = clip_angle(np.arctan2(hy, hx))
-        
-#         timestamp = current_time + rospy.Duration((seq+1) * dt)
-#         pose_stamped = create_pose_stamped(x, y, yaw, path_msg.header.frame_id, seq, timestamp)
-#         pose_stamped = do_transform_pose_stamped(pose_stamped=pose_stamped,transform=transform)
-#         path_msg.poses.append(pose_stamped)
-
-#     return path_msg
-
-def create_path_msg(waypoints:zip, waypoints_frame , path_frame_id, transform) -> Path:
+def create_path_msg(waypoints:zip, waypoints_frame, path_frame_id, seq, transform) -> Path:
     """
     Creates a ROS Path message from a list of waypoints.
 
@@ -156,24 +99,17 @@ def create_path_msg(waypoints:zip, waypoints_frame , path_frame_id, transform) -
     """
     
     path_msg = Path()
+    path_msg.header.seq = seq
     path_msg.header.frame_id = path_frame_id
     current_time  = rospy.Time.now()
     path_msg.header.stamp = current_time
 
     seq = 0 
     for translation, quaternion, timestamp in waypoints:
-        pose_stamped = create_pose_stamped(translation, quaternion, waypoints_frame, seq, timestamp)
+        pose_stamped = create_pose_stamped(translation, quaternion, waypoints_frame, seq, current_time)
         pose_stamped = do_transform_pose_stamped(pose_stamped=pose_stamped,transform=transform)
         path_msg.poses.append(pose_stamped)
         seq+=1
-    # for seq, wp in enumerate(waypoints):
-    #     x, y, hx, hy = wp
-    #     yaw = clip_angle(np.arctan2(hy, hx))
-        
-    #     timestamp = current_time + rospy.Duration((seq+1) )
-    #     pose_stamped = create_pose_stamped(x, y, yaw, path_msg.header.frame_id, seq, timestamp)
-    #     pose_stamped = do_transform_pose_stamped(pose_stamped=pose_stamped,transform=transform)
-    #     path_msg.poses.append(pose_stamped)
 
     return path_msg
 
@@ -223,7 +159,7 @@ class BaseGoalGenerator:
 
         # ROS publishers
         self.path_pub = rospy.Publisher('/poses_path', Path, queue_size=10)
-
+        
         # Sequence counter for messages
         self.seq = 1
 
@@ -259,10 +195,12 @@ class BaseGoalGenerator:
         # Filter and goal settings
         self.goal_to_target = np.array([1.0, 0.0])
         self.observed_target = False
+        
         self.smooth_goal_filter = MovingWindowFilter(window_size=self.params["sensor_moving_window_size"], data_dim=3)
 
         # Setup inference timing
         self.frame_rate = self.params["frame_rate"]
+        self.pub_rate = self.params["pub_rate"]
         self.inference_rate = self.params["inference_rate"]
         self.inference_times = deque(maxlen=self.inference_rate)
 
@@ -273,9 +211,9 @@ class BaseGoalGenerator:
         self.transformed_pose = PoseStamped()
         self.ros_transform = None
         self.path = Path()
-        self.smooth_goal_filter = MovingWindowFilter(window_size=10,data_dim=3)
         # self.smooth_goal_ori_filter = MovingWindowFilter(window_size=3,data_dim=1)
         rospy.on_shutdown(self.shutdownhook)
+        
 
     def load_parameters(self):
         """
@@ -291,6 +229,8 @@ class BaseGoalGenerator:
             "model_name": rospy.get_param(self.node_name + "/model/model_name", default="pilot_bsz128_c4_ac3_gcp0.5_mdp0.25_ph_162024-08-19_21-23-47"),
             "model_version": str(rospy.get_param(self.node_name + "/model/model_version", default="best_model")),
             "frame_rate": rospy.get_param(self.node_name + "/model/frame_rate", default=7),
+            "pub_rate": rospy.get_param(self.node_name + "/model/pub_rate", default=10),
+
             "inference_rate": rospy.get_param(self.node_name + "/model/inference_rate", default=3),
             "wpt_i": rospy.get_param(self.node_name + "/model/wpt_i", default=2),
             "image_topic": rospy.get_param(self.node_name + "/topics/image_topic", default="/zedm/zed_node/depth/depth_registered"),
@@ -307,6 +247,8 @@ class BaseGoalGenerator:
         rospy.loginfo("  * model_name: " + params["model_name"])
         rospy.loginfo("  * model_version: " + params["model_version"])
         rospy.loginfo("  * frame_rate: " + str(params["frame_rate"]))
+        rospy.loginfo("  * pub_rate: " + str(params["pub_rate"]))
+
         rospy.loginfo("  * inference_rate: " + str(params["inference_rate"]))
         rospy.loginfo("  * wpt_i: " + str(params["wpt_i"]))
         rospy.loginfo("* Topics:")
@@ -368,14 +310,20 @@ class GoalGenerator(BaseGoalGenerator):
         self.obj_det_sub = message_filters.Subscriber(self.params["obj_det_topic"], ObjectsStamped)
         self.odom_sub = message_filters.Subscriber(self.params["odom_topic"], Odometry)
         self.goal_pub_sensor = rospy.Publisher('/goal_pose_model', PoseStamped, queue_size=10)
+        self.predcition_timer = rospy.Timer(rospy.Duration(1/self.inference_rate),
+                                            self.prediction_callback)
+        
+        self.goal_pub_timer = rospy.Timer(rospy.Duration(1/self.pub_rate),
+                                            self.goal_pub_callback)
 
         self.sync_topics_list = [self.image_sub]
 
         if self.target_context:
             self.sync_topics_list.append(self.obj_det_sub)
-            
-            
+
+        self.use_action_context = False
         if self.action_context_size>0:
+            self.use_action_context = True
             self.sync_topics_list.append(self.odom_sub)
 
         self.ats = message_filters.ApproximateTimeSynchronizer(
@@ -391,34 +339,11 @@ class GoalGenerator(BaseGoalGenerator):
 
         rospy.loginfo("GoalGenerator initialized successfully.")
 
-    def topics_callback(self, image_msg: Image, obj_det_msg: ObjectsStamped, odom_msg: Odometry = None):
-        """
-        Callback function for synchronized image and object detection messages. Processes data and performs inference.
 
-        Args:
-            image_msg (Image): Image message from the subscribed topic.
-            obj_det_msg (ObjectsStamped): Object detection message from the subscribed topic.
-        """
-        current_time = image_msg.header.stamp
-
-        # Collect image data at the specified frame rate
-        dt_collect = (current_time - self.last_collect_time).to_sec()
-        if dt_collect >= 1.0 / self.frame_rate:
-            self.last_collect_time = current_time
-            self.latest_image = msg_to_pil(image_msg, max_depth=self.max_depth)
-            self.context_queue.append(self.latest_image)
-
-            self.latest_obj_det = list(obj_det_msg.objects[0].position)[:2] if obj_det_msg.objects else [0, 0]
-            self.target_context_queue.append(self.latest_obj_det)
-            
-            if odom_msg is not None:
-                self.latest_odom_pos = pos_yaw_from_odom(odom_msg=odom_msg)
-                self.action_context_queue.append(self.latest_odom_pos)
-
+    def prediction_callback(self,event):
+        
         # Perform inference at the specified inference rate
-        dt_inference = (current_time - self.last_inference_time).to_sec()
-        if (len(self.context_queue) >= self.context_queue.maxlen) and (len(self.target_context_queue) >= self.target_context_queue.maxlen) and  (len(self.action_context_queue) >= self.action_context_queue.maxlen) and (dt_inference >= 1.0 / self.inference_rate):
-            self.last_inference_time = current_time
+        if (len(self.context_queue) >= self.context_queue.maxlen) and (len(self.target_context_queue) >= self.target_context_queue.maxlen) and  (len(self.action_context_queue) >= self.action_context_queue.maxlen):
 
             # Transform image data and prepare target context tensor
             transformed_context_queue = transform_images(list(self.context_queue), transform=self.transform)
@@ -426,7 +351,7 @@ class GoalGenerator(BaseGoalGenerator):
             
             prev_actions = None
 
-            if odom_msg is not None:
+            if self.use_action_context:
                 action_context_queue = np.array(self.action_context_queue)
                 
                 prev_positions = action_context_queue[:,:2]
@@ -459,6 +384,7 @@ class GoalGenerator(BaseGoalGenerator):
 
             # Perform inference to get waypoints
             t = tic()
+            current_time = rospy.Time.now()
             waypoints = self.model(transformed_context_queue,
                                 target_context_queue_tensor,
                                 goal_to_target_tensor,
@@ -468,7 +394,6 @@ class GoalGenerator(BaseGoalGenerator):
             self.inference_times.append(dt_infer)
             avg_inference_time = np.mean(self.inference_times)
             rospy.loginfo_throttle(10, f"Average inference time (last {len(self.inference_times)}): {avg_inference_time:.4f} seconds.")
-
 
             # Extract translations and quaternions from waypoints
             translations = np.array([[wp[0], wp[1], 0.0] for wp in waypoints])  # Assuming z=0.0
@@ -481,65 +406,96 @@ class GoalGenerator(BaseGoalGenerator):
                 quaternions_wxyz=quaternions_wxyz,
                 timestamps=timestamps,
                 current_timestamp=current_time.to_sec(),
-                smoothen_time=1.5  # Smooth transition over 1 second
+                smoothen_time=0.5  # Smooth transition over 1 second
             )
             
             # Retrieve the smoothed trajectory for publishing
             smoothed_translations, smoothed_quaternions = self.realtime_traj.interpolate_traj(timestamps)
-            
-            
-            
-            
+
             try:
                 self.ros_transform = self.tf_buffer.lookup_transform(target_frame=self.odom_frame,
                                                                 source_frame=self.base_frame,
                                                                 time = current_time,
                                                                 timeout=rospy.Duration(0.2))
-                
-                
                 # Create and publish the updated path
                 self.path = create_path_msg(zip(smoothed_translations, smoothed_quaternions, timestamps), waypoints_frame = self.base_frame,
-                                        path_frame_id=self.odom_frame, transform=self.ros_transform)
-                
-                
-                # self.path = create_path_msg(waypoints=waypoints,frame_id=self.odom_frame,dt=1/self.frame_rate, transform = self.ros_transform)
-                
-                
-                # Transform the pose to the odom frame
-                # self.transformed_pose = self.tf_buffer.transform(object_stamped=pose_stamped,
-                #                                                 target_frame=self.odom_frame,
-                #                                                 timeout=rospy.Duration(0.2),
-                #                                                 )
+                                        path_frame_id=self.odom_frame,
+                                        seq=self.seq, transform=self.ros_transform)
 
-                self.transformed_pose = self.path.poses[self.wpt_i]
+                self.transformed_pose: PoseStamped = self.path.poses[self.wpt_i]
+                self.transformed_pose.header.seq = self.seq
                 
+                self.seq+=1
                 
             except (LookupException, ConnectivityException, ExtrapolationException) as e:
                 rospy.logwarn(f"Failed to transform pose: {str(e)}")
                 self.transformed_pose = None  # Ensure the transformed_pose is not used if transformation fails
                 self.path = None
-            
-            # dx, dy, hx, hy = waypoints[self.wpt_i]
-            # yaw = clip_angle(np.arctan2(hy, hx)) 
-            # dx, dy, yaw = self.smooth_goal_filter.calculate_average(np.array([dx,dy,yaw]))
-            # yaw = clip_angle(yaw)
-            
-            # Create and transform pose
-            # pose_stamped = create_pose_stamped(dx, dy, yaw, self.base_frame, self.seq, current_time)
-            self.seq += 1
-            # rospy.loginfo_throttle(1, f"Planner running. Goal generated ([dx, dy, yaw]): [{dx:.4f}, {dy:.4f}, {yaw:.4f}]")
 
-
+    def goal_pub_callback(self,event):
         # Publish the transformed pose
         if self.transformed_pose is not None:
-            dt_pub = (current_time - self.last_msg_time).to_sec()
-            
-            # self.transformed_pose_smoothed = self.filter_pose(self.transformed_pose)
-            self.goal_pub_sensor.publish(self.transformed_pose)
+            self.seq+=1
+            self.transformed_pose_smoothed = self.filter_pose(self.transformed_pose)
+            self.goal_pub_sensor.publish(self.transformed_pose_smoothed)
+            # self.goal_pub_sensor.publish(self.transformed_pose)
             self.path_pub.publish(self.path)
-            # rospy.loginfo(f"Publishing goal after {dt_pub} seconds.")
-            self.last_msg_time = current_time
 
+    def topics_callback(self, image_msg: Image, obj_det_msg: ObjectsStamped, odom_msg: Odometry = None):
+        """
+        Callback function for synchronized image and object detection messages. Processes data and performs inference.
+
+        Args:
+            image_msg (Image): Image message from the subscribed topic.
+            obj_det_msg (ObjectsStamped): Object detection message from the subscribed topic.
+        """
+        current_time = image_msg.header.stamp
+
+        # Collect image data at the specified frame rate
+        dt_collect = (current_time - self.last_collect_time).to_sec()
+        if dt_collect >= 1.0 / self.frame_rate:
+            self.last_collect_time = current_time
+            self.latest_image = msg_to_pil(image_msg, max_depth=self.max_depth)
+            self.context_queue.append(self.latest_image)
+
+            self.latest_obj_det = list(obj_det_msg.objects[0].position)[:2] if obj_det_msg.objects else [0, 0]
+            self.target_context_queue.append(self.latest_obj_det)
+            
+            if odom_msg is not None:
+                self.latest_odom_pos = pos_yaw_from_odom(odom_msg=odom_msg)
+                self.action_context_queue.append(self.latest_odom_pos)
+
+        
+    def filter_pose(self, pose_stamped: PoseStamped):
+        """
+        """
+        raw_pos = np.array([pose_stamped.pose.position.x,
+                            pose_stamped.pose.position.y,
+                            pose_stamped.pose.position.z])
+        
+        raw_or = np.array([pose_stamped.pose.orientation.x,
+                            pose_stamped.pose.orientation.y,
+                            pose_stamped.pose.orientation.z,
+                            pose_stamped.pose.orientation.w])
+
+        smoothed_pos = self.smooth_goal_filter.calculate_average(raw_pos)
+        
+        pose_stamped_filtered = PoseStamped()
+        pose_stamped_filtered.header.seq = pose_stamped.header.seq
+        pose_stamped_filtered.header.stamp = rospy.Time.now()
+        pose_stamped_filtered.header.frame_id = pose_stamped.header.frame_id
+        pose_stamped_filtered.pose.position.x = smoothed_pos[0]
+        pose_stamped_filtered.pose.position.y = smoothed_pos[1]
+        pose_stamped_filtered.pose.orientation.x = raw_or[0]
+        pose_stamped_filtered.pose.orientation.y = raw_or[1]
+        pose_stamped_filtered.pose.orientation.z = raw_or[2]
+        pose_stamped_filtered.pose.orientation.w = raw_or[3]
+        
+        return pose_stamped_filtered
+
+
+
+## TODO: update the kalman filter
 class GoalGeneratorKalman(BaseGoalGenerator):
     def __init__(self):
         """
