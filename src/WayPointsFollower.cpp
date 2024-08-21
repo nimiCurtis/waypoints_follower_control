@@ -26,9 +26,9 @@ WaypointsFollowerControl::WaypointsFollowerControl(ros::NodeHandle& nodeHandle)
                                     &WaypointsFollowerControl::odomCallback, this);
     cmd_publisher_ = nodeHandle_.advertise<geometry_msgs::Twist>(cmdTopic_, 10);
 
-    ctrl_timer_ = nodeHandle.createTimer(ros::Duration(1/50), ControlTimerCallback)
+    ctrl_timer_ = nodeHandle.createTimer(ros::Duration(1./ctrl_loop_freq_),
+                                    &WaypointsFollowerControl::ControlTimerCallback, this);
 
-    nodeHandle_.createTimer()
     // reach_goal_publisher_ = nodeHandle_.advertise<geometry_msgs::Twist>(cmdTopic_, 10);
     // PID controller(lin_Kp_, lin_vel_max_, lin_vel_min_,
     //                     ang_Kp_, ang_vel_max_, ang_vel_min_,
@@ -49,9 +49,9 @@ bool WaypointsFollowerControl::readParameters()
     if (!nodeHandle_.getParam("topics/goal_topic", goalTopic_)) return false;
     if (!nodeHandle_.getParam("topics/cmd_topic", cmdTopic_)) return false;
     if (!nodeHandle_.getParam("topics/odom_topic", odomTopic_)) return false;
-
+    
+    if (!nodeHandle_.getParam("control/ctrl_loop_freq", ctrl_loop_freq_)) return false;
     if (!nodeHandle_.getParam("control/rotate_dist_threshold", rotate_dist_threshold_)) return false;
-
     if (!nodeHandle_.getParam("control/angular/kp", ang_Kp_)) return false;
     if (!nodeHandle_.getParam("control/angular/ki", ang_Ki_)) return false; // Load angular Ki
     if (!nodeHandle_.getParam("control/angular/kd", ang_Kd_)) return false; // Load angular Kd
@@ -74,6 +74,8 @@ bool WaypointsFollowerControl::readParameters()
     ROS_INFO_STREAM("  * cmd_topic: " << cmdTopic_);
     ROS_INFO_STREAM("  * odom_topic: " << odomTopic_);
     ROS_INFO_STREAM("* Control:");
+    ROS_INFO_STREAM("  * Control loop frequency: " << ctrl_loop_freq_ << " [hz]");
+
     ROS_INFO_STREAM("  * Rotate commands thresh: " << rotate_dist_threshold_);
 
     ROS_INFO_STREAM("  * Linear vel:");
