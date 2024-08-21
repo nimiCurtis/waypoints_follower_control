@@ -2,10 +2,11 @@ robot: go2 # turtlebot | go2 | nimrod
 
 frames:
   odom_frame: odom
-  # base_frame: base
+  base_frame: base_footprint
 
   # base_frame: base_link
-  base_frame: zedm_left_camera_frame
+  # base_frame: zedm_left_camera_frame
+
 model: 
   # model_name: pilot-go-to-the-pic-pidiff_2024-06-25_09-43-16
   model_name: pilot_bsz128_c4_ac3_gcp0.5_mdp0.25_ph_82024-08-19_18-10-30
