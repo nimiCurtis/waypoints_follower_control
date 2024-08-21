@@ -25,6 +25,10 @@ WaypointsFollowerControl::WaypointsFollowerControl(ros::NodeHandle& nodeHandle)
     odom_subscriber_ = nodeHandle_.subscribe(odomTopic_, 1,
                                     &WaypointsFollowerControl::odomCallback, this);
     cmd_publisher_ = nodeHandle_.advertise<geometry_msgs::Twist>(cmdTopic_, 10);
+
+    ctrl_timer_ = nodeHandle.createTimer(ros::Duration(1/50), ControlTimerCallback)
+
+    nodeHandle_.createTimer()
     // reach_goal_publisher_ = nodeHandle_.advertise<geometry_msgs::Twist>(cmdTopic_, 10);
     // PID controller(lin_Kp_, lin_vel_max_, lin_vel_min_,
     //                     ang_Kp_, ang_vel_max_, ang_vel_min_,
@@ -128,7 +132,12 @@ void WaypointsFollowerControl::odomCallback(const nav_msgs::Odometry& msg)
         ROS_INFO_THROTTLE(1.,"Odometry | X: % .2f | Y: % .2f | | Yaw: % .2f ",
                 curr_xyyaw_in_odom_[0], curr_xyyaw_in_odom_[1], curr_xyyaw_in_odom_[2]);
     }
+}
 
+
+void WaypointsFollowerControl::ControlTimerCallback(const ros::TimerEvent&)
+{
+    
     // Get the end time
     ros::Time curr_time = ros::Time::now();
 
@@ -160,16 +169,6 @@ void WaypointsFollowerControl::odomCallback(const nav_msgs::Odometry& msg)
     cmd_msg.angular.x = 0.0;
     cmd_publisher_.publish(cmd_msg);
 
-
-    // geometry_msgs::Twist cmd_msg;
-    // cmd_msg.linear.x = control_cmd[0];
-    // cmd_msg.linear.y = 0.0;
-    // cmd_msg.linear.z = 0.0;
-    // cmd_msg.angular.z = control_cmd[1];
-    // cmd_msg.angular.y = 0.0;
-    // cmd_msg.angular.x = 0.0;
-    // cmd_publisher_.publish(cmd_msg);
-
     bool print_cmd = true;
     if (print_cmd) {
         ROS_INFO_THROTTLE(1.,"Command | X: % .2f | Y: % .2f | Z: % .2f | Roll: % .2f | "
@@ -178,6 +177,9 @@ void WaypointsFollowerControl::odomCallback(const nav_msgs::Odometry& msg)
                 cmd_msg.angular.x, cmd_msg.angular.y, cmd_msg.angular.z);
     }
 
+
 }
+
+
 
 } /* namespace */

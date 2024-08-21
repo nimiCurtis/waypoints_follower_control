@@ -52,6 +52,9 @@ class WaypointsFollowerControl
    */
     void odomCallback(const nav_msgs::Odometry& msg);
 
+
+
+    void ControlTimerCallback(const ros::TimerEvent&);
   //   /*!
   //    * ROS service server callback.
   //    * @param request the request of the service.
@@ -71,6 +74,7 @@ class WaypointsFollowerControl
 
     ros::Publisher cmd_publisher_;
 
+    ros::Timer ctrl_timer_;
   //! ROS topic name to subscribe to.
     std::string goalTopic_;
     std::string cmdTopic_;
