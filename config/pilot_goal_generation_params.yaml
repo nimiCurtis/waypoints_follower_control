@@ -9,8 +9,8 @@ frames:
 
 model: 
   # model_name: pilot-go-to-the-pic-pidiff_2024-06-25_09-43-16
-  model_name: pilot_bsz128_c5_ac4_gcp0.5_mdp0.05_ph8_2024-08-20_21-55-49
-  model_version: latest # best_model | latest | <epoch_number> (int)
+  model_name: pilot_bsz128_c5_ac4_gcp0.6_mdp0.05_ph8_2024-08-21_10-37-58
+  model_version: best_model # best_model | latest | <epoch_number> (int)
   # model_name: pilot-turtle-static-follower_2024-07-03_00-16-16
 
   frame_rate: 7 # NOTE: please pay atteniton that this value is similar to the sampling rate

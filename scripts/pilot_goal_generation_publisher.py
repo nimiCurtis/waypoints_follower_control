@@ -226,7 +226,7 @@ class BaseGoalGenerator:
 
         params = {
             "robot": rospy.get_param(self.node_name + "/robot", default="turtlebot"),
-            "model_name": rospy.get_param(self.node_name + "/model/model_name", default="pilot_bsz128_c4_ac3_gcp0.5_mdp0.25_ph_162024-08-19_21-23-47"),
+            "model_name": rospy.get_param(self.node_name + "/model/model_name", default="pilot_bsz128_c5_ac4_gcp0.6_mdp0.05_ph8_2024-08-21_10-37-58"),
             "model_version": str(rospy.get_param(self.node_name + "/model/model_version", default="best_model")),
             "frame_rate": rospy.get_param(self.node_name + "/model/frame_rate", default=7),
             "pub_rate": rospy.get_param(self.node_name + "/model/pub_rate", default=10),
@@ -406,7 +406,7 @@ class GoalGenerator(BaseGoalGenerator):
                 quaternions_wxyz=quaternions_wxyz,
                 timestamps=timestamps,
                 current_timestamp=current_time.to_sec(),
-                smoothen_time=0.5  # Smooth transition over 1 second
+                smoothen_time=1.5  # Smooth transition over 1 second
             )
             
             # Retrieve the smoothed trajectory for publishing
