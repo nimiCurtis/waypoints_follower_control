@@ -230,7 +230,7 @@ class BaseGoalGenerator:
 
         params = {
             "robot": rospy.get_param(self.node_name + "/robot", default="turtlebot"),
-            "model_name": rospy.get_param(self.node_name + "/model/model_name", default="pilot_bsz128_c5_ac4_gcp0.6_mdp0.05_ph8_2024-08-21_10-37-58"),
+            "model_name": rospy.get_param(self.node_name + "/model/model_name", default="pilot_bsz160_c6_ac3_gcp0.4_mdp0.0_ph162024-08-24_15-16-54"),
             "model_version": str(rospy.get_param(self.node_name + "/model/model_version", default="best_model")),
             "frame_rate": rospy.get_param(self.node_name + "/model/frame_rate", default=7),
             "pub_rate": rospy.get_param(self.node_name + "/model/pub_rate", default=10),

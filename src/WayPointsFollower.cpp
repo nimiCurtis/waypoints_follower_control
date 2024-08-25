@@ -169,7 +169,6 @@ void WaypointsFollowerControl::ControlTimerCallback(const ros::TimerEvent&)
     
     // Get the end time
     ros::Time curr_time = ros::Time::now();
-    ROS_INFO_STREAM("      * kp: " << lin_Kp_);
 
     // Calculate the time difference
     ros::Duration time_difference = curr_time - prev_time_;
