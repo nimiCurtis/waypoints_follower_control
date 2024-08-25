@@ -14,7 +14,9 @@ find_package(catkin REQUIRED COMPONENTS
   rospy
   sensor_msgs
   std_msgs
+  dynamic_reconfigure
 )
+# find_package(catkin REQUIRED dynamic_reconfigure)
 
 ## Find system libraries
 find_package(Eigen3 REQUIRED)
@@ -96,10 +98,10 @@ find_package(Boost REQUIRED)
 ##     and list every .cfg file to be processed
 
 ## Generate dynamic reconfigure parameters in the 'cfg' folder
-# generate_dynamic_reconfigure_options(
-#   cfg/DynReconf1.cfg
-#   cfg/DynReconf2.cfg
-# )
+generate_dynamic_reconfigure_options(
+  cfg/GoalGenParams.cfg
+  cfg/WFCParams.cfg
+)
 
 ###################################
 ## catkin specific configuration ##
@@ -193,11 +195,15 @@ target_compile_features(${PROJECT_NAME} INTERFACE cxx_std_11)
 ## Add dependencies to exported targets, like ROS msgs or srvs
 add_dependencies(${PROJECT_NAME}_core
   ${catkin_EXPORTED_TARGETS}
+
 )
 
 add_dependencies(${PROJECT_NAME}
   ${catkin_EXPORTED_TARGETS}
+
 )
+
+add_dependencies(${PROJECT_NAME} ${PROJECT_NAME}_gencfg)
 
 ## Specify libraries to link executable targets against
 target_link_libraries(${PROJECT_NAME}_core

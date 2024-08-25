@@ -27,6 +27,10 @@ from pilot_utils.deploy.modules import MovingWindowFilter, GoalPositionEstimator
 from pilot_utils.utils import tic, toc, from_numpy, normalize_data, xy_to_d_cos_sin, clip_angle
 from pilot_utils.data.data_utils import to_local_coords
 
+
+from waypoints_follower_control.cfg import ParametersConfig
+from dynamic_reconfigure.server import Server
+
 def pos_yaw_from_odom(odom_msg:Odometry)->list:
     """
     Extracts position and yaw from a Odometry message.
@@ -197,7 +201,7 @@ class BaseGoalGenerator:
         self.observed_target = False
         
         self.smooth_goal_filter = MovingWindowFilter(window_size=self.params["sensor_moving_window_size"], data_dim=3)
-
+        self.smoothen_time = self.params["smoothen_time"]
         # Setup inference timing
         self.frame_rate = self.params["frame_rate"]
         self.pub_rate = self.params["pub_rate"]
@@ -230,7 +234,6 @@ class BaseGoalGenerator:
             "model_version": str(rospy.get_param(self.node_name + "/model/model_version", default="best_model")),
             "frame_rate": rospy.get_param(self.node_name + "/model/frame_rate", default=7),
             "pub_rate": rospy.get_param(self.node_name + "/model/pub_rate", default=10),
-
             "inference_rate": rospy.get_param(self.node_name + "/model/inference_rate", default=3),
             "wpt_i": rospy.get_param(self.node_name + "/model/wpt_i", default=2),
             "image_topic": rospy.get_param(self.node_name + "/topics/image_topic", default="/zedm/zed_node/depth/depth_registered"),
@@ -239,6 +242,8 @@ class BaseGoalGenerator:
             "odom_frame": rospy.get_param(self.node_name + "/frames/odom_frame", default="odom"),
             "base_frame": rospy.get_param(self.node_name + "/frames/base_frame", default="base_footprint"),
             "sensor_moving_window_size": rospy.get_param(self.node_name + "/filter/sensor_moving_window_size", default=1),
+            "smoothen_time": rospy.get_param(self.node_name + "/filter/smoothen_time", default=0.1),
+
         }
 
         rospy.loginfo(f"******* {self.node_name} Parameters *******")
@@ -262,6 +267,7 @@ class BaseGoalGenerator:
 
         rospy.loginfo("* Filter:")
         rospy.loginfo("  * sensor_moving_window_size: " + str(params["sensor_moving_window_size"]))
+        rospy.loginfo("  * smoothen_time: " + str(params["smoothen_time"]))
 
         rospy.loginfo("**************************")
 
@@ -316,6 +322,9 @@ class GoalGenerator(BaseGoalGenerator):
         self.goal_pub_timer = rospy.Timer(rospy.Duration(1/self.pub_rate),
                                             self.goal_pub_callback)
 
+        self.srv = Server(ParametersConfig, self.cfg_callback)
+        
+        
         self.sync_topics_list = [self.image_sub]
 
         if self.target_context:
@@ -338,10 +347,26 @@ class GoalGenerator(BaseGoalGenerator):
         self.realtime_traj = RealtimeTraj()
         self.start_time = rospy.Time.now()
         
+        
 
         rospy.loginfo("GoalGenerator initialized successfully.")
 
 
+    def cfg_callback(self, config, level):
+        rospy.loginfo("""Reconfigure Request:
+                        frame_rate = {frame_rate}, 
+                        wpt_i = {wpt_i}, 
+                        smoothen_time = {smoothen_time}""".format(**config))
+        
+        # Update the corresponding variables in your class
+        self.frame_rate = config.frame_rate
+        # self.pub_rate = config.pub_rate
+        # self.inference_rate = config.inference_rate
+        self.wpt_i = config.wpt_i
+        self.smoothen_time = config.smoothen_time
+
+        return config
+    
     def prediction_callback(self,event):
         
         # Perform inference at the specified inference rate
@@ -410,7 +435,7 @@ class GoalGenerator(BaseGoalGenerator):
                 quaternions_xyzw=quaternions_xyzw,
                 timestamps=timestamps,
                 current_timestamp= current_time + dt_infer,
-                smoothen_time=1.5  # Smooth transition over 1 second
+                smoothen_time=self.smoothen_time  # Smooth transition over 1 second
             )
             
             # Retrieve the smoothed trajectory for publishing

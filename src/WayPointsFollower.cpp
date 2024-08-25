@@ -1,5 +1,6 @@
 #include "waypoints_follower_control/WaypointsFollowerControl.hpp"
-
+// #include "waypoints_follower_control/ParametersConfig.h"
+#include "waypoints_follower_control/WFCConfig.h"
 // STD
 #include <string>
 
@@ -37,12 +38,38 @@ WaypointsFollowerControl::WaypointsFollowerControl(ros::NodeHandle& nodeHandle)
                             ang_Kp_, ang_Ki_, ang_Kd_,ang_vel_max_, ang_vel_min_,
                             rotate_dist_threshold_);
 
+    dynamic_reconfigure::Server<waypoints_follower_control::WFCConfig>::CallbackType f;
+    f = boost::bind(&WaypointsFollowerControl::cfgCallback, this, _1, _2);
+    server_.setCallback(f);
+
     ROS_INFO("Successfully launched node.");
 }
 
 WaypointsFollowerControl::~WaypointsFollowerControl()
 {
 }
+
+
+void WaypointsFollowerControl::cfgCallback(waypoints_follower_control::WFCConfig &config, uint32_t level) {
+        ROS_INFO("Reconfigure Request: rotate_dist_threshold = %f,\n linear_kp = %f, linear_ki = %f, linear_kd = %f,\n angular_kp = %f, angular_ki = %f, angular_kd = %f,\n smoothing_k = %f",
+                        config.rotate_dist_threshold,
+                        config.linear_kp, config.linear_ki, config.linear_kd,
+                        config.angular_kp, config.angular_ki, config.angular_kd,
+                        config.smoothing_k);
+
+        rotate_dist_threshold_ = config.rotate_dist_threshold;
+
+        lin_Kp_ = config.linear_kp;
+        lin_Ki_ = config.linear_ki;
+        lin_Kd_ = config.linear_kd;
+
+        ang_Kp_ = config.angular_kp;
+        ang_Ki_ = config.angular_ki;
+        ang_Kd_ = config.angular_kd;
+
+        k_ = config.smoothing_k;
+}
+
 
 bool WaypointsFollowerControl::readParameters()
 {
@@ -142,6 +169,7 @@ void WaypointsFollowerControl::ControlTimerCallback(const ros::TimerEvent&)
     
     // Get the end time
     ros::Time curr_time = ros::Time::now();
+    ROS_INFO_STREAM("      * kp: " << lin_Kp_);
 
     // Calculate the time difference
     ros::Duration time_difference = curr_time - prev_time_;

@@ -11,6 +11,9 @@
 #include <tf2_eigen/tf2_eigen.h>
 #include <tf2/LinearMath/Quaternion.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.h>
+#include <dynamic_reconfigure/server.h>
+#include <waypoints_follower_control/WFCConfig.h>
+
 
 using namespace std;
 
@@ -51,8 +54,8 @@ class WaypointsFollowerControl
    * @param message the received message.
    */
     void odomCallback(const nav_msgs::Odometry& msg);
-
-
+    
+    void cfgCallback(waypoints_follower_control::WFCConfig &config, uint32_t level);
 
     void ControlTimerCallback(const ros::TimerEvent&);
   //   /*!
@@ -66,7 +69,7 @@ class WaypointsFollowerControl
 
   //! ROS node handle.
     ros::NodeHandle& nodeHandle_;
-
+    dynamic_reconfigure::Server<waypoints_follower_control::WFCConfig> server_;
 
   //! ROS topic subscriber.
     ros::Subscriber goal_subscriber_;

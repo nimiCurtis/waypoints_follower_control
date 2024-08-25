@@ -15,9 +15,9 @@ model:
 
   frame_rate: 7 # NOTE: please pay atteniton that this value is similar to the sampling rate
                 # of the data collected to train the policy
-  pub_rate: 10
+  pub_rate: 4
   inference_rate: 4
-  wpt_i: 2
+  wpt_i: 1
 
 topics: 
   image_topic: /zedm/zed_node/depth/depth_registered
@@ -28,7 +28,8 @@ topics:
 filter:
 
   sensor_moving_window_size: 1
-  
+  smoothen_time: 0.1
+
   kalman:
     enable: True
     k_B: 0.03
