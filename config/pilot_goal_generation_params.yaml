@@ -27,7 +27,7 @@ topics:
 
 filter:
 
-  sensor_moving_window_size: 3
+  sensor_moving_window_size: 1
   
   kalman:
     enable: True

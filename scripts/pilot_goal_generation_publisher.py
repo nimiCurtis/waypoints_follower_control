@@ -237,7 +237,7 @@ class BaseGoalGenerator:
             "obj_det_topic": rospy.get_param(self.node_name + "/topics/obj_det_topic", default="/obj_detect_publisher_node/object"),
             "odom_topic": rospy.get_param(self.node_name + "/topics/odom_topic", default="/zedm/zed_node/odom"),
             "odom_frame": rospy.get_param(self.node_name + "/frames/odom_frame", default="odom"),
-            "base_frame": rospy.get_param(self.node_name + "/frames/base_frame", default="base_link"),
+            "base_frame": rospy.get_param(self.node_name + "/frames/base_frame", default="base_footprint"),
             "sensor_moving_window_size": rospy.get_param(self.node_name + "/filter/sensor_moving_window_size", default=1),
         }
 
@@ -336,6 +336,8 @@ class GoalGenerator(BaseGoalGenerator):
         
         # Initialize RealtimeTraj for managing and updating the trajectory
         self.realtime_traj = RealtimeTraj()
+        self.start_time = rospy.Time.now()
+        
 
         rospy.loginfo("GoalGenerator initialized successfully.")
 
@@ -384,7 +386,7 @@ class GoalGenerator(BaseGoalGenerator):
 
             # Perform inference to get waypoints
             t = tic()
-            current_time = rospy.Time.now()
+            current_time = (rospy.Time.now() - self.start_time).to_sec()
             waypoints = self.model(transformed_context_queue,
                                 target_context_queue_tensor,
                                 goal_to_target_tensor,
@@ -400,14 +402,14 @@ class GoalGenerator(BaseGoalGenerator):
             # Extract translations and quaternions from waypoints
             translations = np.array([[wp[0], wp[1], 0.0] for wp in waypoints])  # Assuming z=0.0
             quaternions_xyzw = np.array([quaternion_from_euler(0, 0, np.arctan2(wp[3], wp[2])) for wp in waypoints])
-            timestamps = np.array([current_time.to_sec() + ((i + 1) / self.frame_rate) for i in range(len(waypoints))])
+            timestamps = np.array([current_time + ((i + 1) / self.frame_rate) for i in range(len(waypoints))])
 
             # Update the trajectory with the new predictions using RealtimeTraj
             self.realtime_traj.update(
                 translations=translations,
                 quaternions_xyzw=quaternions_xyzw,
                 timestamps=timestamps,
-                current_timestamp=current_time.to_sec(),
+                current_timestamp= current_time + dt_infer,
                 smoothen_time=1.5  # Smooth transition over 1 second
             )
             
@@ -417,7 +419,7 @@ class GoalGenerator(BaseGoalGenerator):
             try:
                 self.ros_transform = self.tf_buffer.lookup_transform(target_frame=self.odom_frame,
                                                                 source_frame=self.base_frame,
-                                                                time = current_time,
+                                                                time = rospy.Time(0),
                                                                 timeout=rospy.Duration(0.2))
                 # Create and publish the updated path
                 self.path = create_path_msg(zip(smoothed_translations, smoothed_quaternions, timestamps), waypoints_frame = self.base_frame,
