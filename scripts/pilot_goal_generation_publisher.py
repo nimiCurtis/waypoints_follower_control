@@ -395,15 +395,17 @@ class GoalGenerator(BaseGoalGenerator):
             avg_inference_time = np.mean(self.inference_times)
             rospy.loginfo_throttle(10, f"Average inference time (last {len(self.inference_times)}): {avg_inference_time:.4f} seconds.")
 
+            
+            # Umi on legs
             # Extract translations and quaternions from waypoints
             translations = np.array([[wp[0], wp[1], 0.0] for wp in waypoints])  # Assuming z=0.0
-            quaternions_wxyz = np.array([quaternion_from_euler(0, 0, np.arctan2(wp[3], wp[2])) for wp in waypoints])
+            quaternions_xyzw = np.array([quaternion_from_euler(0, 0, np.arctan2(wp[3], wp[2])) for wp in waypoints])
             timestamps = np.array([current_time.to_sec() + ((i + 1) / self.frame_rate) for i in range(len(waypoints))])
 
             # Update the trajectory with the new predictions using RealtimeTraj
             self.realtime_traj.update(
                 translations=translations,
-                quaternions_wxyz=quaternions_wxyz,
+                quaternions_xyzw=quaternions_xyzw,
                 timestamps=timestamps,
                 current_timestamp=current_time.to_sec(),
                 smoothen_time=1.5  # Smooth transition over 1 second
@@ -465,7 +467,7 @@ class GoalGenerator(BaseGoalGenerator):
                 self.latest_odom_pos = pos_yaw_from_odom(odom_msg=odom_msg)
                 self.action_context_queue.append(self.latest_odom_pos)
 
-        
+
     def filter_pose(self, pose_stamped: PoseStamped):
         """
         """
