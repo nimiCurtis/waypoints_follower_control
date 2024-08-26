@@ -50,27 +50,6 @@ WaypointsFollowerControl::~WaypointsFollowerControl()
 }
 
 
-void WaypointsFollowerControl::cfgCallback(waypoints_follower_control::WFCConfig &config, uint32_t level) {
-        ROS_INFO("Reconfigure Request: rotate_dist_threshold = %f,\n linear_kp = %f, linear_ki = %f, linear_kd = %f,\n angular_kp = %f, angular_ki = %f, angular_kd = %f,\n smoothing_k = %f",
-                        config.rotate_dist_threshold,
-                        config.linear_kp, config.linear_ki, config.linear_kd,
-                        config.angular_kp, config.angular_ki, config.angular_kd,
-                        config.smoothing_k);
-
-        rotate_dist_threshold_ = config.rotate_dist_threshold;
-
-        lin_Kp_ = config.linear_kp;
-        lin_Ki_ = config.linear_ki;
-        lin_Kd_ = config.linear_kd;
-
-        ang_Kp_ = config.angular_kp;
-        ang_Ki_ = config.angular_ki;
-        ang_Kd_ = config.angular_kd;
-
-        k_ = config.smoothing_k;
-}
-
-
 bool WaypointsFollowerControl::readParameters()
 {
     if (!nodeHandle_.getParam("topics/goal_topic", goalTopic_)) return false;
@@ -127,13 +106,28 @@ bool WaypointsFollowerControl::readParameters()
 }
 
 
+void WaypointsFollowerControl::cfgCallback(waypoints_follower_control::WFCConfig &config, uint32_t level) {
+        ROS_INFO("Reconfigure Request: rotate_dist_threshold = %f,\n linear_kp = %f, linear_ki = %f, linear_kd = %f,\n angular_kp = %f, angular_ki = %f, angular_kd = %f,\n smoothing_k = %f",
+                        config.rotate_dist_threshold,
+                        config.linear_kp, config.linear_ki, config.linear_kd,
+                        config.angular_kp, config.angular_ki, config.angular_kd,
+                        config.smoothing_k);
+
+
+        controller_->setControllerParams(config.linear_kp,config.linear_ki,config.linear_kd,
+                                        config.angular_kp, config.angular_ki, config.angular_kd,
+                                        config.rotate_dist_threshold);
+
+        k_ = config.smoothing_k;
+}
+
+
 void WaypointsFollowerControl::goalCallback(const geometry_msgs::PoseStamped& msg)
 {   
 
     double roll, pitch, yaw;
     geometry_msgs::Quaternion quat = msg.pose.orientation;
-    tf2::Matrix3x3(tf2::Quaternion(quat.x, quat.y, quat.z, quat.w))
-        .getRPY(roll, pitch, yaw);
+    tf2::Matrix3x3(tf2::Quaternion(quat.x, quat.y, quat.z, quat.w)).getRPY(roll, pitch, yaw);
     
     goal_xyyaw_in_odom_ << msg.pose.position.x, msg.pose.position.y, yaw; 
     bool print_goal = true;

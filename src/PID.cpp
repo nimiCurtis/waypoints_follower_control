@@ -1,5 +1,5 @@
 #include "waypoints_follower_control/PID.hpp"
-
+#include <ros/ros.h>
 #include <utility>
 
 using namespace std;
@@ -13,7 +13,7 @@ using namespace std;
  * \param yaw The input angle in radians.
  * \return The normalized angle in radians, constrained to the range of -π to π.
  */
-double normalize_angle(double yaw) {
+double clip_angle(double yaw) {
     // Normalize the angle between -π and π
     if (yaw > M_PI) {
         yaw -= 2 * M_PI;
@@ -25,7 +25,13 @@ double normalize_angle(double yaw) {
         return yaw;
     }
 
-    return normalize_angle(yaw);
+    return clip_angle(yaw);
+}
+
+
+template <typename T> 
+int sgn(T val) {
+    return (T(0) < val) - (val < T(0));
 }
 
 /*!
@@ -57,7 +63,7 @@ namespace wfc {
 
     PID::PID(double& lin_Kp, double& lin_Ki, double& lin_Kd,double& lin_vel_max, double& lin_vel_min,
         double& ang_Kp, double& ang_Ki, double& ang_Kd, double& ang_vel_max, double& ang_vel_min,
-        double rotate_dist_threshold):
+        double& rotate_dist_threshold):
         lin_Kp_(lin_Kp), lin_Ki_(lin_Ki), lin_Kd_(lin_Kd),lin_vel_max_(lin_vel_max), lin_vel_min_(lin_vel_min),
         integral_error_(0.),prev_error_(0.),
         ang_Kp_(ang_Kp), ang_Ki_(ang_Ki), ang_Kd_(ang_Kd),ang_vel_max_(ang_vel_max), ang_vel_min_(ang_vel_min),
@@ -79,6 +85,21 @@ namespace wfc {
 
     }
 
+    void PID::setControllerParams(double& lin_Kp, double& lin_Ki, double& lin_Kd,
+        double& ang_Kp, double& ang_Ki, double& ang_Kd,
+        double& rotate_dist_threshold)
+    {
+        rotate_dist_threshold_ = rotate_dist_threshold;
+
+        lin_Kp_ = lin_Kp;
+        lin_Ki_ = lin_Ki;
+        lin_Kd_ = lin_Kd;
+
+        ang_Kp_ = ang_Kp;
+        ang_Ki_ = ang_Ki;
+        ang_Kd_ = ang_Kd;
+    }
+
     void PID::getControl(const Eigen::Vector3d& curr_xyyaw_in_odom,
                                     const double& dt,
                                     Eigen::Vector2d& control_cmd)
@@ -95,6 +116,7 @@ namespace wfc {
         double dx = diff_in_base[0]; 
         double dy = diff_in_base[1];
         double dist = sqrt(dx * dx + dy * dy);
+        // ROS_INFO("dx: %f | dy: %f | dist: %f", dx,dy,dist);
 
         // X axis PID
         double error = dx / dt ;
@@ -115,12 +137,26 @@ namespace wfc {
         double dyaw = atan2(dy, dx);
 
         if (dist < rotate_dist_threshold_) {
+            
             dyaw = (*goal_xyyaw_in_odom_)[2] - curr_xyyaw_in_odom[2];
-            dyaw = normalize_angle(dyaw);
+            dyaw = clip_angle(dyaw);
+            if (std::abs(dyaw)<=0.05){
+                dyaw = 0.0;
+                }
+            // ROS_INFO("inside radi");
+            // ROS_INFO("goal_xyyaw_in_odom_: %f | curr_xyyaw_in_odom: %f", (*goal_xyyaw_in_odom_)[2], curr_xyyaw_in_odom[2]);
+            lin_vel = 0.0;
         }
+        // ROS_INFO("dyaw: %f", dyaw);
 
         // Yaw PID
+        /////////////////////////////////////// here
+        // double yaw_error = static_cast<double>(sgn(dy) * (dyaw/dt));
+        // ROS_INFO("dt: %f", dt);
         double yaw_error = dyaw/dt;
+        // ROS_INFO("dy: %f", dy);
+        // ROS_INFO("yaw_error: %f", yaw_error);
+        
         yaw_integral_error_ += yaw_error*dt;
         double yaw_derivative_error_ = (yaw_error - prev_yaw_error_)/dt;
 
@@ -133,6 +169,10 @@ namespace wfc {
         double angular_vel = ang_Kp_* yaw_error + ang_Ki_ * yaw_integral_error_ + ang_Kd_ * yaw_derivative_error_;
         prev_yaw_error_ = yaw_error;
         
+
+        
+
+
         // clip velocities
         lin_vel = clip(lin_vel, lin_vel_min_, lin_vel_max_);
         angular_vel = clip(angular_vel, ang_vel_min_, ang_vel_max_);
