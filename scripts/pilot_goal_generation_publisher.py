@@ -90,7 +90,7 @@ def create_pose_stamped(translation, quaternion, frame_id: str, seq: int, stamp:
     pose_stamped.pose.orientation.w = quaternion[3]
     return pose_stamped
 
-def create_path_msg(waypoints:zip, waypoints_frame, path_frame_id, seq, transform) -> Path:
+def create_path_msg(waypoints:zip, waypoints_frame, path_frame_id, seq) -> Path:
     """
     Creates a ROS Path message from a list of waypoints.
 
@@ -111,7 +111,7 @@ def create_path_msg(waypoints:zip, waypoints_frame, path_frame_id, seq, transfor
     seq = 0 
     for translation, quaternion, timestamp in waypoints:
         pose_stamped = create_pose_stamped(translation, quaternion, waypoints_frame, seq, current_time)
-        pose_stamped = do_transform_pose_stamped(pose_stamped=pose_stamped,transform=transform)
+        # pose_stamped = do_transform_pose_stamped(pose_stamped=pose_stamped,transform=transform)
         path_msg.poses.append(pose_stamped)
         seq+=1
 
@@ -442,14 +442,14 @@ class GoalGenerator(BaseGoalGenerator):
             smoothed_translations, smoothed_quaternions = self.realtime_traj.interpolate_traj(timestamps)
 
             try:
-                self.ros_transform = self.tf_buffer.lookup_transform(target_frame=self.odom_frame,
-                                                                source_frame=self.base_frame,
-                                                                time = rospy.Time(0),
-                                                                timeout=rospy.Duration(0.2))
+                # self.ros_transform = self.tf_buffer.lookup_transform(target_frame=self.odom_frame,
+                #                                                 source_frame=self.base_frame,
+                #                                                 time = rospy.Time(0),
+                #                                                 timeout=rospy.Duration(0.2))
                 # Create and publish the updated path
                 self.path = create_path_msg(zip(smoothed_translations, smoothed_quaternions, timestamps), waypoints_frame = self.base_frame,
-                                        path_frame_id=self.odom_frame,
-                                        seq=self.seq, transform=self.ros_transform)
+                                        path_frame_id=self.base_frame,
+                                        seq=self.seq) #, transform=self.ros_transform)
 
                 self.transformed_pose: PoseStamped = self.path.poses[self.wpt_i]
                 self.transformed_pose.header.seq = self.seq
