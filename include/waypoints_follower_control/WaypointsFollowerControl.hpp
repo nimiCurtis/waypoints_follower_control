@@ -108,7 +108,9 @@ class WaypointsFollowerControl
     double rotate_dist_threshold_;
     double ctrl_loop_freq_;
 
+    int frame_rate_;
     // Added variables for smoothing control commands
+    Eigen::Vector2d control_cmd_;
     Eigen::Vector2d prev_raw_control_cmd_;       // Previous raw control command
     Eigen::Vector2d prev_filtered_control_cmd_;  // Previous filtered control command
     Eigen::Vector2d filtered_control_cmd_;       // Current filtered control command

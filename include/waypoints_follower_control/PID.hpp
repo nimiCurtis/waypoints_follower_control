@@ -44,7 +44,7 @@ class PID
     */
     PID(double& lin_Kp, double& lin_Ki, double& lin_Kd,double& lin_vel_max, double& lin_vel_min,
         double& ang_Kp, double& ang_Ki, double& ang_Kd, double& ang_vel_max, double& ang_vel_min,
-        double& rotate_dist_threshold);
+        double& rotate_dist_threshold, double& dt);
 
     /*!
     * \brief Destructor.
@@ -68,9 +68,7 @@ class PID
     * \param dt Time step between control updates.
     * \param contrl_cmd A 2D vector to store the resulting control command (linear velocity, angular velocity).
     */
-    void getControl(const Eigen::Vector3d& curr_xyyaw_in_odom,
-                    const double& dt,
-                    Eigen::Vector2d& contrl_cmd);
+    void getControl(Eigen::Vector2d& contrl_cmd);
 
     void setControllerParams(double& lin_Kp, double& lin_Ki, double& lin_Kd,
         double& ang_Kp, double& ang_Ki, double& ang_Kd,
@@ -81,6 +79,7 @@ class PID
     //! The desired goal position and orientation in the odom frame.
     std::unique_ptr<Eigen::Vector3d> goal_xyyaw_in_odom_;
 
+    double dt_;
     //! Proportional gain for the angular velocity control.
     double ang_Kp_;
     double ang_Ki_;

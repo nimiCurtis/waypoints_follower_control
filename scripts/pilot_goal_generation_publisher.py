@@ -319,8 +319,8 @@ class GoalGenerator(BaseGoalGenerator):
         self.predcition_timer = rospy.Timer(rospy.Duration(1/self.inference_rate),
                                             self.prediction_callback)
         
-        self.goal_pub_timer = rospy.Timer(rospy.Duration(1/self.pub_rate),
-                                            self.goal_pub_callback)
+        # self.goal_pub_timer = rospy.Timer(rospy.Duration(1/self.pub_rate),
+        #                                     self.goal_pub_callback)
 
         self.srv = Server(ParametersConfig, self.cfg_callback)
         
@@ -460,15 +460,23 @@ class GoalGenerator(BaseGoalGenerator):
                 rospy.logwarn(f"Failed to transform pose: {str(e)}")
                 self.transformed_pose = None  # Ensure the transformed_pose is not used if transformation fails
                 self.path = None
+                
+            
+            if self.transformed_pose is not None:
+                self.seq+=1
+                self.transformed_pose_smoothed = self.filter_pose(self.transformed_pose)
+                self.goal_pub_sensor.publish(self.transformed_pose_smoothed)
+                # self.goal_pub_sensor.publish(self.transformed_pose)
+                self.path_pub.publish(self.path)
 
-    def goal_pub_callback(self,event):
-        # Publish the transformed pose
-        if self.transformed_pose is not None:
-            self.seq+=1
-            self.transformed_pose_smoothed = self.filter_pose(self.transformed_pose)
-            self.goal_pub_sensor.publish(self.transformed_pose_smoothed)
-            # self.goal_pub_sensor.publish(self.transformed_pose)
-            self.path_pub.publish(self.path)
+    # def goal_pub_callback(self,event):
+    #     # Publish the transformed pose
+    #     if self.transformed_pose is not None:
+    #         self.seq+=1
+    #         self.transformed_pose_smoothed = self.filter_pose(self.transformed_pose)
+    #         self.goal_pub_sensor.publish(self.transformed_pose_smoothed)
+    #         # self.goal_pub_sensor.publish(self.transformed_pose)
+    #         self.path_pub.publish(self.path)
 
     def topics_callback(self, image_msg: Image, obj_det_msg: ObjectsStamped, odom_msg: Odometry = None):
         """

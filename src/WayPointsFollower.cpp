@@ -10,10 +10,12 @@ WaypointsFollowerControl::WaypointsFollowerControl(ros::NodeHandle& nodeHandle)
     : nodeHandle_(nodeHandle),
     prev_time_(ros::Time::now()),
     goal_xyyaw_in_odom_({0.,0.,0.}),
+    control_cmd_({0.,0.}),
     prev_raw_control_cmd_({0.,0.}),
     prev_filtered_control_cmd_({0.,0.}),
     k_(1.0),  // You can adjust these coefficients
     e_(0.0),  // You can adjust these coefficients
+    frame_rate_(7),
     controller_(nullptr)
 {
   if (!readParameters()) {
@@ -23,20 +25,22 @@ WaypointsFollowerControl::WaypointsFollowerControl(ros::NodeHandle& nodeHandle)
     goal_subscriber_ = nodeHandle_.subscribe(goalTopic_, 1,
                                     &WaypointsFollowerControl::goalCallback, this);
     
-    odom_subscriber_ = nodeHandle_.subscribe(odomTopic_, 1,
-                                    &WaypointsFollowerControl::odomCallback, this);
+    // odom_subscriber_ = nodeHandle_.subscribe(odomTopic_, 1,
+    //                                 &WaypointsFollowerControl::odomCallback, this);
     cmd_publisher_ = nodeHandle_.advertise<geometry_msgs::Twist>(cmdTopic_, 10);
 
     ctrl_timer_ = nodeHandle.createTimer(ros::Duration(1./ctrl_loop_freq_),
                                     &WaypointsFollowerControl::ControlTimerCallback, this);
 
+
     // reach_goal_publisher_ = nodeHandle_.advertise<geometry_msgs::Twist>(cmdTopic_, 10);
     // PID controller(lin_Kp_, lin_vel_max_, lin_vel_min_,
     //                     ang_Kp_, ang_vel_max_, ang_vel_min_,
     //                     rotate_dist_threshold_);
+    double dt = 1./(double)frame_rate_;
     controller_ = new PID(lin_Kp_, lin_Ki_, lin_Kd_, lin_vel_max_, lin_vel_min_,
                             ang_Kp_, ang_Ki_, ang_Kd_,ang_vel_max_, ang_vel_min_,
-                            rotate_dist_threshold_);
+                            rotate_dist_threshold_, dt);
 
     dynamic_reconfigure::Server<waypoints_follower_control::WFCConfig>::CallbackType f;
     f = boost::bind(&WaypointsFollowerControl::cfgCallback, this, _1, _2);
@@ -69,6 +73,7 @@ bool WaypointsFollowerControl::readParameters()
     if (!nodeHandle_.getParam("control/linear/kd", lin_Kd_)) return false; // Load linear Kd
     if (!nodeHandle_.getParam("control/linear/max_vel", lin_vel_max_)) return false;
     if (!nodeHandle_.getParam("control/linear/min_vel", lin_vel_min_)) return false;
+    if (!nodeHandle_.getParam("control/frame_rate", frame_rate_)) return false;
 
     // Load smoothing parameters
     if (!nodeHandle_.getParam("control/smoothing/k", k_)) return false;
@@ -83,6 +88,7 @@ bool WaypointsFollowerControl::readParameters()
     ROS_INFO_STREAM("  * Control loop frequency: " << ctrl_loop_freq_ << " [hz]");
 
     ROS_INFO_STREAM("  * Rotate commands thresh: " << rotate_dist_threshold_);
+    ROS_INFO_STREAM("  * Frame rate: " << frame_rate_);
 
     ROS_INFO_STREAM("  * Linear vel:");
     ROS_INFO_STREAM("      * max_vel: " << lin_vel_max_ << " | min_vel: " << lin_vel_min_);
@@ -138,52 +144,56 @@ void WaypointsFollowerControl::goalCallback(const geometry_msgs::PoseStamped& ms
 
     controller_->setGoal(goal_xyyaw_in_odom_);
 
+    // Eigen::Vector2d control_cmd;
+    controller_->getControl(control_cmd_);
+
 }
 
-void WaypointsFollowerControl::odomCallback(const nav_msgs::Odometry& msg)
-{   
+// void WaypointsFollowerControl::odomCallback(const nav_msgs::Odometry& msg)
+// {   
     
-    double roll, pitch, yaw;
-    geometry_msgs::Quaternion quat = msg.pose.pose.orientation;
-    tf2::Matrix3x3(tf2::Quaternion(quat.x, quat.y, quat.z, quat.w))
-        .getRPY(roll, pitch, yaw);
+//     double roll, pitch, yaw;
+//     geometry_msgs::Quaternion quat = msg.pose.pose.orientation;
+//     tf2::Matrix3x3(tf2::Quaternion(quat.x, quat.y, quat.z, quat.w))
+//         .getRPY(roll, pitch, yaw);
 
-    curr_xyyaw_in_odom_ << msg.pose.pose.position.x, msg.pose.pose.position.y, yaw; 
+//     curr_xyyaw_in_odom_ << msg.pose.pose.position.x, msg.pose.pose.position.y, yaw; 
 
-    bool print_odom = true;
-    if (print_odom) {
-        ROS_INFO_THROTTLE(1.,"Odometry | X: % .2f | Y: % .2f | | Yaw: % .2f ",
-                curr_xyyaw_in_odom_[0], curr_xyyaw_in_odom_[1], curr_xyyaw_in_odom_[2]);
-    }
-}
+//     bool print_odom = true;
+//     if (print_odom) {
+//         ROS_INFO_THROTTLE(1.,"Odometry | X: % .2f | Y: % .2f | | Yaw: % .2f ",
+//                 curr_xyyaw_in_odom_[0], curr_xyyaw_in_odom_[1], curr_xyyaw_in_odom_[2]);
+//     }
+// }
 
 
 void WaypointsFollowerControl::ControlTimerCallback(const ros::TimerEvent&)
 {
     
     // Get the end time
-    ros::Time curr_time = ros::Time::now();
+    // ros::Time curr_time = ros::Time::now();
 
     // Calculate the time difference
-    ros::Duration time_difference = curr_time - prev_time_;
-    double dt = time_difference.toSec();
-    prev_time_ = curr_time;
+    // ros::Duration time_difference = curr_time - prev_time_;
+    // double dt = time_difference.toSec();
+    // prev_time_ = curr_time;
     
-    Eigen::Vector2d control_cmd;
-    controller_->getControl(curr_xyyaw_in_odom_,dt,control_cmd);
+    
 
     // TODO: smooth control_cmd[0] and control_cmd[0] with the prev raw and the prev_filtered
     // filtered_control_cmd[0] = k*control_cmd[0] + e*prev_raw_control_cmd[0] + (1-e-k)*prev_filtered_control_cmd
 
     // Smooth control_cmd with the previous values
-    filtered_control_cmd_[0] = k_ * control_cmd[0] + e_ * prev_raw_control_cmd_[0] + (1 - e_ - k_) * prev_filtered_control_cmd_[0];
-    filtered_control_cmd_[1] = k_ * control_cmd[1] + e_ * prev_raw_control_cmd_[1] + (1 - e_ - k_) * prev_filtered_control_cmd_[1];
+    filtered_control_cmd_[0] = k_ * control_cmd_[0] + e_ * prev_raw_control_cmd_[0] + (1 - e_ - k_) * prev_filtered_control_cmd_[0];
+    filtered_control_cmd_[1] = k_ * control_cmd_[1] + e_ * prev_raw_control_cmd_[1] + (1 - e_ - k_) * prev_filtered_control_cmd_[1];
+    ROS_INFO("command lin_vel: %f | angular_vel: %f ", filtered_control_cmd_[0],filtered_control_cmd_[1]);
 
     // Update the previous command values
-    prev_raw_control_cmd_ = control_cmd;
+    prev_raw_control_cmd_ = control_cmd_;
     prev_filtered_control_cmd_ = filtered_control_cmd_;
 
     geometry_msgs::Twist cmd_msg;
+
     cmd_msg.linear.x = filtered_control_cmd_[0];
     cmd_msg.linear.y = 0.0;
     cmd_msg.linear.z = 0.0;

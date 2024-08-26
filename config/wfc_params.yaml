@@ -6,12 +6,13 @@ topics:
   goal_topic: /goal_pose_model
   # goal_topic: /goal_pose_filtered
   cmd_topic: /wfc/cmd_vel
-
+  
 
 # Control
 control:
-  ctrl_loop_freq: 15  # [hz]
-  rotate_dist_threshold: 0.1 # [m]
+  ctrl_loop_freq: 12  # [hz]
+  frame_rate: 7
+  rotate_dist_threshold: 0.01 # [m]
   linear:
     max_vel: 2. # change depend on robot config
     min_vel: -1.
