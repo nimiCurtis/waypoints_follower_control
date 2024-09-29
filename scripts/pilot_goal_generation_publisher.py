@@ -393,9 +393,9 @@ class GoalGenerator(BaseGoalGenerator):
             np_curr_rel_pos = np.zeros((target_context_queue.shape[0], self.target_dim))
             if self.target_dim == 3:
                 np_curr_rel_pos[~target_context_mask] = xy_to_d_cos_sin(target_context_queue[~target_context_mask])
-                np_curr_rel_pos[~target_context_mask, 0] = normalize_data(data=np_curr_rel_pos[~target_context_mask, 0], stats={'min': -self.max_depth / 1000, 'max': self.max_depth / 1000})
+                np_curr_rel_pos[~target_context_mask, 0] = normalize_data(data=np_curr_rel_pos[~target_context_mask, 0], stats={'min': -self.max_depth / 1000, 'max': self.max_depth / 1000}, norm_type="maxmin")
             elif self.target_dim == 2:
-                np_curr_rel_pos[~target_context_mask] = normalize_data(data=target_context_queue[~target_context_mask], stats={'min': -self.max_depth / 1000, 'max': self.max_depth / 1000})
+                np_curr_rel_pos[~target_context_mask] = normalize_data(data=target_context_queue[~target_context_mask], stats={'min': -self.max_depth / 1000, 'max': self.max_depth / 1000}, norm_type="maxmin" )
 
 
             target_context_queue_tensor = from_numpy(np_curr_rel_pos)
@@ -403,9 +403,9 @@ class GoalGenerator(BaseGoalGenerator):
             # Prepare goal condition tensor
             if self.target_dim == 3:
                     goal_rel_pos_to_target = xy_to_d_cos_sin(self.goal_to_target)
-                    goal_rel_pos_to_target[0] = normalize_data(data=goal_rel_pos_to_target[0], stats={'min': -self.max_depth / 1000, 'max': self.max_depth / 1000})
+                    goal_rel_pos_to_target[0] = normalize_data(data=goal_rel_pos_to_target[0], stats={'min': -self.max_depth / 1000, 'max': self.max_depth / 1000}, norm_type="maxmin")
             elif self.target_dim == 2:
-                goal_rel_pos_to_target = normalize_data(data=self.goal_to_target, stats={'min': -self.max_depth / 1000, 'max': self.max_depth / 1000})
+                goal_rel_pos_to_target = normalize_data(data=self.goal_to_target, stats={'min': -self.max_depth / 1000, 'max': self.max_depth / 1000}, norm_type="maxmin")
 
             goal_to_target_tensor = from_numpy(goal_rel_pos_to_target)
 
