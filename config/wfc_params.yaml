@@ -11,7 +11,7 @@ topics:
 # Control
 control:
   ctrl_loop_freq: 12  # [hz]
-  frame_rate: 7
+  frame_rate: 12
   rotate_dist_threshold: 0.01 # [m]
   linear:
     max_vel: 2. # change depend on robot config
@@ -23,7 +23,7 @@ control:
   angular:
     max_vel: 1.
     min_vel: -1.
-    kp: 0.12
+    kp: 0.1
     ki: 0.0
     kd: 0.0
 
