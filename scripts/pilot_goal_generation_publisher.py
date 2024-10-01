@@ -90,7 +90,7 @@ def create_pose_stamped(translation, quaternion, frame_id: str, seq: int, stamp:
     pose_stamped.pose.orientation.w = quaternion[3]
     return pose_stamped
 
-def create_path_msg(waypoints:zip, waypoints_frame, path_frame_id, seq) -> Path:
+def create_path_msg(waypoints:zip, waypoints_frame, path_frame_id, seq, transform=None) -> Path:
     """
     Creates a ROS Path message from a list of waypoints.
 
@@ -111,7 +111,8 @@ def create_path_msg(waypoints:zip, waypoints_frame, path_frame_id, seq) -> Path:
     seq = 0 
     for translation, quaternion, timestamp in waypoints:
         pose_stamped = create_pose_stamped(translation, quaternion, waypoints_frame, seq, current_time)
-        # pose_stamped = do_transform_pose_stamped(pose_stamped=pose_stamped,transform=transform)
+        if transform is not None:
+            pose_stamped = do_transform_pose_stamped(pose_stamped=pose_stamped,transform=transform)
         path_msg.poses.append(pose_stamped)
         seq+=1
 
@@ -163,6 +164,7 @@ class BaseGoalGenerator:
 
         # ROS publishers
         self.path_pub = rospy.Publisher('/poses_path', Path, queue_size=10)
+        self.path_goal_poses_pub = rospy.Publisher('/poses_path_history', Path, queue_size=10)
         
         # Sequence counter for messages
         self.seq = 1
@@ -215,9 +217,12 @@ class BaseGoalGenerator:
         self.transformed_pose = PoseStamped()
         self.ros_transform = None
         self.path = Path()
+        self.poses_path = Path()
+        self.poses_path.header.frame_id = self.odom_frame
+        
         # self.smooth_goal_ori_filter = MovingWindowFilter(window_size=3,data_dim=1)
         rospy.on_shutdown(self.shutdownhook)
-        
+
 
     def load_parameters(self):
         """
@@ -226,7 +231,7 @@ class BaseGoalGenerator:
         Returns:
             dict: A dictionary containing the loaded parameters.
         """
-        
+
 
         params = {
             "robot": rospy.get_param(self.node_name + "/robot", default="turtlebot"),
@@ -316,6 +321,8 @@ class GoalGenerator(BaseGoalGenerator):
         self.obj_det_sub = message_filters.Subscriber(self.params["obj_det_topic"], ObjectsStamped)
         self.odom_sub = message_filters.Subscriber(self.params["odom_topic"], Odometry)
         self.goal_pub_sensor = rospy.Publisher('/goal_pose_model', PoseStamped, queue_size=10)
+        self.predcition_timer = rospy.Timer(rospy.Duration(1/self.inference_rate),
+                                            self.prediction_callback)
         self.predcition_timer = rospy.Timer(rospy.Duration(1/self.inference_rate),
                                             self.prediction_callback)
         
@@ -442,14 +449,14 @@ class GoalGenerator(BaseGoalGenerator):
             smoothed_translations, smoothed_quaternions = self.realtime_traj.interpolate_traj(timestamps)
 
             try:
-                # self.ros_transform = self.tf_buffer.lookup_transform(target_frame=self.odom_frame,
-                #                                                 source_frame=self.base_frame,
-                #                                                 time = rospy.Time(0),
-                #                                                 timeout=rospy.Duration(0.2))
+                self.ros_transform = self.tf_buffer.lookup_transform(target_frame=self.odom_frame,
+                                                                source_frame=self.base_frame,
+                                                                time = rospy.Time(0),
+                                                                timeout=rospy.Duration(0.2))
                 # Create and publish the updated path
                 self.path = create_path_msg(zip(smoothed_translations, smoothed_quaternions, timestamps), waypoints_frame = self.base_frame,
                                         path_frame_id=self.base_frame,
-                                        seq=self.seq) #, transform=self.ros_transform)
+                                        seq=self.seq)
 
                 self.transformed_pose: PoseStamped = self.path.poses[self.wpt_i]
                 self.transformed_pose.header.seq = self.seq
@@ -466,8 +473,15 @@ class GoalGenerator(BaseGoalGenerator):
                 self.seq+=1
                 self.transformed_pose_smoothed = self.filter_pose(self.transformed_pose)
                 self.goal_pub_sensor.publish(self.transformed_pose_smoothed)
-                # self.goal_pub_sensor.publish(self.transformed_pose)
                 self.path_pub.publish(self.path)
+
+                
+                transformed_pose_smoothed = do_transform_pose_stamped(self.transformed_pose_smoothed,transform=self.ros_transform)
+                self.poses_path.poses.append(transformed_pose_smoothed)
+                self.poses_path.header.stamp = transformed_pose_smoothed.header.stamp
+                self.path_goal_poses_pub.publish(self.poses_path)
+                # self.goal_pub_sensor.publish(self.transformed_pose)
+
 
     # def goal_pub_callback(self,event):
     #     # Publish the transformed pose
