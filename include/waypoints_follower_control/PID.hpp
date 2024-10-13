@@ -42,7 +42,9 @@ class PID
     * \param ang_vel_min Minimum angular velocity.
     * \param rotate_dist_threshold Distance threshold for initiating rotational control.
     */
-    PID(double& lin_Kp, double& lin_Ki, double& lin_Kd,double& lin_vel_max, double& lin_vel_min,
+    PID(double& lin_Kp_x_, double& lin_Ki_x_, double& lin_Kd_x_,
+        double& lin_Kp_y_, double& lin_Ki_y_, double& lin_Kd_y_,
+        double& lin_vel_max, double& lin_vel_min,
         double& ang_Kp, double& ang_Ki, double& ang_Kd, double& ang_vel_max, double& ang_vel_min,
         double& rotate_dist_threshold);
 
@@ -70,9 +72,10 @@ class PID
     */
     void getControl(const Eigen::Vector3d& curr_xyyaw_in_odom,
                     const double& dt,
-                    Eigen::Vector2d& contrl_cmd);
+                    Eigen::Vector3d& contrl_cmd);
 
-    void setControllerParams(double& lin_Kp, double& lin_Ki, double& lin_Kd,
+    void setControllerParams(double& lin_Kp_x, double& lin_Ki_x, double& lin_Kd_x_,
+        double& lin_Kp_y, double& lin_Ki_y, double& lin_Kd_y,
         double& ang_Kp, double& ang_Ki, double& ang_Kd,
         double& rotate_dist_threshold);
 
@@ -89,11 +92,14 @@ class PID
     double prev_yaw_error_;
 
     //! Proportional gain for the linear velocity control.
-    double lin_Kp_;
-    double lin_Ki_;
-    double lin_Kd_;
+    double lin_Kp_x_;
+    double lin_Ki_x_;
+    double lin_Kd_x_;
+    double lin_Kp_y_;
+    double lin_Ki_y_;
+    double lin_Kd_y_;
     double integral_error_;
-    double prev_error_;
+    Eigen::Vector2d prev_error_;
 
     //! Maximum linear velocity.
     double lin_vel_max_;

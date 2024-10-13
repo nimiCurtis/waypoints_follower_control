@@ -10,8 +10,8 @@ WaypointsFollowerControl::WaypointsFollowerControl(ros::NodeHandle& nodeHandle)
     : nodeHandle_(nodeHandle),
     prev_time_(ros::Time::now()),
     goal_xyyaw_in_odom_({0.,0.,0.}),
-    prev_raw_control_cmd_({0.,0.}),
-    prev_filtered_control_cmd_({0.,0.}),
+    prev_raw_control_cmd_({0.,0.,0.}),
+    prev_filtered_control_cmd_({0.,0.,0.}),
     k_(1.0),  // You can adjust these coefficients
     e_(0.0),  // You can adjust these coefficients
     controller_(nullptr)
@@ -34,7 +34,9 @@ WaypointsFollowerControl::WaypointsFollowerControl(ros::NodeHandle& nodeHandle)
     // PID controller(lin_Kp_, lin_vel_max_, lin_vel_min_,
     //                     ang_Kp_, ang_vel_max_, ang_vel_min_,
     //                     rotate_dist_threshold_);
-    controller_ = new PID(lin_Kp_, lin_Ki_, lin_Kd_, lin_vel_max_, lin_vel_min_,
+    controller_ = new PID(lin_Kp_x_, lin_Ki_x_, lin_Kd_x_,
+                            lin_Kp_y_, lin_Ki_y_, lin_Kd_y_,
+                            lin_vel_max_, lin_vel_min_,
                             ang_Kp_, ang_Ki_, ang_Kd_,ang_vel_max_, ang_vel_min_,
                             rotate_dist_threshold_);
 
@@ -64,9 +66,15 @@ bool WaypointsFollowerControl::readParameters()
     if (!nodeHandle_.getParam("control/angular/max_vel", ang_vel_max_)) return false;
     if (!nodeHandle_.getParam("control/angular/min_vel", ang_vel_min_)) return false;
 
-    if (!nodeHandle_.getParam("control/linear/kp", lin_Kp_)) return false;
-    if (!nodeHandle_.getParam("control/linear/ki", lin_Ki_)) return false; // Load linear Ki
-    if (!nodeHandle_.getParam("control/linear/kd", lin_Kd_)) return false; // Load linear Kd
+    if (!nodeHandle_.getParam("control/linear/kp_x", lin_Kp_x_)) return false;
+    if (!nodeHandle_.getParam("control/linear/ki_x", lin_Ki_x_)) return false; // Load linear Ki
+    if (!nodeHandle_.getParam("control/linear/kd_x", lin_Kd_x_)) return false; // Load linear Kd
+    
+    if (!nodeHandle_.getParam("control/linear/kp_y", lin_Kp_y_)) return false;
+    if (!nodeHandle_.getParam("control/linear/ki_y", lin_Ki_y_)) return false; // Load linear Ki
+    if (!nodeHandle_.getParam("control/linear/kd_y", lin_Kd_y_)) return false; // Load linear Kd
+
+
     if (!nodeHandle_.getParam("control/linear/max_vel", lin_vel_max_)) return false;
     if (!nodeHandle_.getParam("control/linear/min_vel", lin_vel_min_)) return false;
 
@@ -86,10 +94,13 @@ bool WaypointsFollowerControl::readParameters()
 
     ROS_INFO_STREAM("  * Linear vel:");
     ROS_INFO_STREAM("      * max_vel: " << lin_vel_max_ << " | min_vel: " << lin_vel_min_);
-    ROS_INFO_STREAM("      * kp: " << lin_Kp_);
-    ROS_INFO_STREAM("      * ki: " << lin_Ki_);
-    ROS_INFO_STREAM("      * kd: " << lin_Kd_);
-    
+    ROS_INFO_STREAM("      * kp_x: " << lin_Kp_x_);
+    ROS_INFO_STREAM("      * ki_x: " << lin_Ki_x_);
+    ROS_INFO_STREAM("      * kd_x: " << lin_Kd_x_);
+    ROS_INFO_STREAM("      * kp_y: " << lin_Kp_y_);
+    ROS_INFO_STREAM("      * ki_y: " << lin_Ki_y_);
+    ROS_INFO_STREAM("      * kd_y: " << lin_Kd_y_);
+
     ROS_INFO_STREAM("  * Angular vel:");
     ROS_INFO_STREAM("      * max_vel: " << ang_vel_max_ << " | min_vel: " << ang_vel_min_);
     ROS_INFO_STREAM("      * kp: " << ang_Kp_);
@@ -107,14 +118,16 @@ bool WaypointsFollowerControl::readParameters()
 
 
 void WaypointsFollowerControl::cfgCallback(waypoints_follower_control::WFCConfig &config, uint32_t level) {
-        ROS_INFO("Reconfigure Request: rotate_dist_threshold = %f,\n linear_kp = %f, linear_ki = %f, linear_kd = %f,\n angular_kp = %f, angular_ki = %f, angular_kd = %f,\n smoothing_k = %f",
+        ROS_INFO("Reconfigure Request: rotate_dist_threshold = %f,\n linear_kp_x = %f, linear_ki_x = %f, linear_kd_x = %f,\n linear_kp_y = %f, linear_ki_y = %f, linear_kd_y = %f,\n angular_kp = %f, angular_ki = %f, angular_kd = %f,\n smoothing_k = %f",
                         config.rotate_dist_threshold,
-                        config.linear_kp, config.linear_ki, config.linear_kd,
+                        config.linear_kp_x, config.linear_ki_x, config.linear_kd_x,
+                        config.linear_kp_y, config.linear_ki_y, config.linear_kd_y,
                         config.angular_kp, config.angular_ki, config.angular_kd,
                         config.smoothing_k);
 
 
-        controller_->setControllerParams(config.linear_kp,config.linear_ki,config.linear_kd,
+        controller_->setControllerParams(config.linear_kp_x, config.linear_ki_x, config.linear_kd_x,
+                                        config.linear_kp_y, config.linear_ki_y, config.linear_kd_y,
                                         config.angular_kp, config.angular_ki, config.angular_kd,
                                         config.rotate_dist_threshold);
 
@@ -169,7 +182,7 @@ void WaypointsFollowerControl::ControlTimerCallback(const ros::TimerEvent&)
     double dt = time_difference.toSec();
     prev_time_ = curr_time;
     
-    Eigen::Vector2d control_cmd;
+    Eigen::Vector3d control_cmd;
     controller_->getControl(curr_xyyaw_in_odom_,dt,control_cmd);
 
     // TODO: smooth control_cmd[0] and control_cmd[0] with the prev raw and the prev_filtered
@@ -178,6 +191,7 @@ void WaypointsFollowerControl::ControlTimerCallback(const ros::TimerEvent&)
     // Smooth control_cmd with the previous values
     filtered_control_cmd_[0] = k_ * control_cmd[0] + e_ * prev_raw_control_cmd_[0] + (1 - e_ - k_) * prev_filtered_control_cmd_[0];
     filtered_control_cmd_[1] = k_ * control_cmd[1] + e_ * prev_raw_control_cmd_[1] + (1 - e_ - k_) * prev_filtered_control_cmd_[1];
+    filtered_control_cmd_[2] = k_ * control_cmd[2] + e_ * prev_raw_control_cmd_[2] + (1 - e_ - k_) * prev_filtered_control_cmd_[2];
 
     // Update the previous command values
     prev_raw_control_cmd_ = control_cmd;
@@ -185,9 +199,9 @@ void WaypointsFollowerControl::ControlTimerCallback(const ros::TimerEvent&)
 
     geometry_msgs::Twist cmd_msg;
     cmd_msg.linear.x = filtered_control_cmd_[0];
-    cmd_msg.linear.y = 0.0;
+    cmd_msg.linear.y = filtered_control_cmd_[1];
     cmd_msg.linear.z = 0.0;
-    cmd_msg.angular.z = filtered_control_cmd_[1];
+    cmd_msg.angular.z = filtered_control_cmd_[2];
     cmd_msg.angular.y = 0.0;
     cmd_msg.angular.x = 0.0;
     cmd_publisher_.publish(cmd_msg);

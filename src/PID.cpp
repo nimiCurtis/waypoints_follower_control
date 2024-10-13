@@ -61,11 +61,15 @@ namespace wfc {
         this->setGoal(start);
     }
 
-    PID::PID(double& lin_Kp, double& lin_Ki, double& lin_Kd,double& lin_vel_max, double& lin_vel_min,
+    PID::PID(double& lin_Kp_x, double& lin_Ki_x, double& lin_Kd_x,
+        double& lin_Kp_y, double& lin_Ki_y, double& lin_Kd_y,
+        double& lin_vel_max, double& lin_vel_min,
         double& ang_Kp, double& ang_Ki, double& ang_Kd, double& ang_vel_max, double& ang_vel_min,
         double& rotate_dist_threshold):
-        lin_Kp_(lin_Kp), lin_Ki_(lin_Ki), lin_Kd_(lin_Kd),lin_vel_max_(lin_vel_max), lin_vel_min_(lin_vel_min),
-        integral_error_(0.),prev_error_(0.),
+        lin_Kp_x_(lin_Kp_x), lin_Ki_x_(lin_Ki_x), lin_Kd_x_(lin_Kd_x),
+        lin_Kp_y_(lin_Kp_y), lin_Ki_y_(lin_Ki_y), lin_Kd_y_(lin_Kd_y),
+        lin_vel_max_(lin_vel_max), lin_vel_min_(lin_vel_min),
+        integral_error_(0.),prev_error_({0.,0.}),
         ang_Kp_(ang_Kp), ang_Ki_(ang_Ki), ang_Kd_(ang_Kd),ang_vel_max_(ang_vel_max), ang_vel_min_(ang_vel_min),
         yaw_integral_error_(0),prev_yaw_error_(0.),
         rotate_dist_threshold_(rotate_dist_threshold)
@@ -85,15 +89,21 @@ namespace wfc {
 
     }
 
-    void PID::setControllerParams(double& lin_Kp, double& lin_Ki, double& lin_Kd,
+    void PID::setControllerParams(double& lin_Kp_x, double& lin_Ki_x, double& lin_Kd_x,
+        double& lin_Kp_y, double& lin_Ki_y, double& lin_Kd_y,
         double& ang_Kp, double& ang_Ki, double& ang_Kd,
         double& rotate_dist_threshold)
     {
         rotate_dist_threshold_ = rotate_dist_threshold;
 
-        lin_Kp_ = lin_Kp;
-        lin_Ki_ = lin_Ki;
-        lin_Kd_ = lin_Kd;
+        lin_Kp_x_ = lin_Kp_x;
+        lin_Ki_x_ = lin_Ki_x;
+        lin_Kd_x_ = lin_Kd_x;
+
+
+        lin_Kp_y_ = lin_Kp_y;
+        lin_Ki_y_ = lin_Ki_y;
+        lin_Kd_y_ = lin_Kd_y;
 
         ang_Kp_ = ang_Kp;
         ang_Ki_ = ang_Ki;
@@ -102,7 +112,7 @@ namespace wfc {
 
     void PID::getControl(const Eigen::Vector3d& curr_xyyaw_in_odom,
                                     const double& dt,
-                                    Eigen::Vector2d& control_cmd)
+                                    Eigen::Vector3d& control_cmd)
     {
         // Compute the difference between the first two elements of the vectors
         Eigen::Vector2d dpos = (goal_xyyaw_in_odom_->head<2>() - curr_xyyaw_in_odom.head<2>());
@@ -110,7 +120,7 @@ namespace wfc {
         Eigen::Matrix2d odom2baselink;
         odom2baselink << cos(yaw), sin(yaw),
                             -sin(yaw), cos(yaw); 
-
+        
         Eigen::Vector2d diff_in_base = odom2baselink * dpos;
 
         double dx = diff_in_base[0]; 
@@ -119,33 +129,40 @@ namespace wfc {
         // ROS_INFO("dx: %f | dy: %f | dist: %f", dx,dy,dist);
 
         // X axis PID
-        double error = dx / dt ;
-        integral_error_ += error*dt;
-        double derivative_error_ = (error - prev_error_)/dt;
+        //double error = dx / dt ;
+        // Create an Eigen vector for the error, which is diff_base / dt
+        Eigen::Vector2d error = diff_in_base / dt;
 
-        if (dist == 0 && error == 0){
-            integral_error_ = 0;
-        }
+        // integral_error_ += error*dt;
+        // double derivative_error_ = (error - prev_error_)/dt;
+        Eigen::Vector2d derivative_error_ = (error - prev_error_)/dt;
+        // if (dist == 0 && error == 0){
+        //     integral_error_ = 0;
+        // }
 
         // get the linear velocity
         // double lin_vel = lin_Kp_* error;
-        double lin_vel = lin_Kp_* error + lin_Ki_ * integral_error_ + lin_Kd_ *  derivative_error_;
+
+        // PD controller
+        double lin_vel_x = lin_Kp_x_* error[0]  + lin_Kd_x_ *  derivative_error_[0];
+        double lin_vel_y = lin_Kp_y_* error[1]  + lin_Kd_y_ *  derivative_error_[1];
+
         prev_error_ = error;
 
-
         // get the angular velocity and normalize it if needed
-        double dyaw = atan2(dy, dx);
+
+        double dyaw = (*goal_xyyaw_in_odom_)[2] - curr_xyyaw_in_odom[2];
+        dyaw = clip_angle(dyaw);
+
+        if (std::abs(dyaw)<=0.05){
+                dyaw = 0.0;
+        }
+        // double dyaw = atan2(dy, dx);
 
         if (dist < rotate_dist_threshold_) {
-            
-            dyaw = (*goal_xyyaw_in_odom_)[2] - curr_xyyaw_in_odom[2];
-            dyaw = clip_angle(dyaw);
-            if (std::abs(dyaw)<=0.05){
-                dyaw = 0.0;
-                }
             // ROS_INFO("inside radi");
             // ROS_INFO("goal_xyyaw_in_odom_: %f | curr_xyyaw_in_odom: %f", (*goal_xyyaw_in_odom_)[2], curr_xyyaw_in_odom[2]);
-            lin_vel = 0.0;
+            lin_vel_x = 0.0;
         }
         // ROS_INFO("dyaw: %f", dyaw);
 
@@ -157,7 +174,7 @@ namespace wfc {
         // ROS_INFO("dy: %f", dy);
         // ROS_INFO("yaw_error: %f", yaw_error);
         
-        yaw_integral_error_ += yaw_error*dt;
+        // yaw_integral_error_ += yaw_error*dt;
         double yaw_derivative_error_ = (yaw_error - prev_yaw_error_)/dt;
 
         if ((*goal_xyyaw_in_odom_)[2] == 0 && yaw_error==0){
@@ -170,15 +187,13 @@ namespace wfc {
         prev_yaw_error_ = yaw_error;
         
 
-        
-
-
         // clip velocities
-        lin_vel = clip(lin_vel, lin_vel_min_, lin_vel_max_);
+        lin_vel_x = clip(lin_vel_x, lin_vel_min_, lin_vel_max_);
+        lin_vel_y = clip(lin_vel_y, lin_vel_min_, lin_vel_max_);
         angular_vel = clip(angular_vel, ang_vel_min_, ang_vel_max_);
 
         // return linear_vel, angular_vel
-        control_cmd << lin_vel, angular_vel; 
+        control_cmd << lin_vel_x, lin_vel_y, angular_vel; 
 
     }
 } /* namespace */

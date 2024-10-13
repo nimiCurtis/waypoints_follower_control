@@ -2,9 +2,9 @@ robot: go2 # turtlebot | go2 | nimrod
 
 frames:
   odom_frame: odom
-  base_frame: base_footprint
+  # base_frame: base_footprint
 
-  # base_frame: base_link
+  base_frame: base_link
   # base_frame: zedm_left_camera_frame
 
 model: 
@@ -19,7 +19,7 @@ model:
 
   frame_rate: 12 # NOTE: please pay atteniton that this value is similar to the sampling rate
                 # of the data collected to train the policy
-  pub_rate: 4
+  pub_rate: 10
   inference_rate: 2
   wpt_i: 8
 

@@ -94,10 +94,15 @@ class WaypointsFollowerControl
     double ang_Kp_;
     double ang_Ki_;
     double ang_Kd_;
+
     
-    double lin_Kp_;
-    double lin_Ki_;
-    double lin_Kd_;
+    double lin_Kp_x_;
+    double lin_Ki_x_;
+    double lin_Kd_x_;
+
+    double lin_Kp_y_;
+    double lin_Ki_y_;
+    double lin_Kd_y_;
 
     double lin_vel_max_ ;
     double lin_vel_min_ ;
@@ -109,9 +114,9 @@ class WaypointsFollowerControl
     double ctrl_loop_freq_;
 
     // Added variables for smoothing control commands
-    Eigen::Vector2d prev_raw_control_cmd_;       // Previous raw control command
-    Eigen::Vector2d prev_filtered_control_cmd_;  // Previous filtered control command
-    Eigen::Vector2d filtered_control_cmd_;       // Current filtered control command
+    Eigen::Vector3d prev_raw_control_cmd_;       // Previous raw control command
+    Eigen::Vector3d prev_filtered_control_cmd_;  // Previous filtered control command
+    Eigen::Vector3d filtered_control_cmd_;       // Current filtered control command
     double k_;                                   // Coefficient for current command influence
     double e_;                                   // Coefficient for previous raw command influence
 };
