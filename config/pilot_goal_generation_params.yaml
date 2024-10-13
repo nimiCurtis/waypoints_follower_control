@@ -22,7 +22,7 @@ model:
   pub_rate: 10
   inference_rate: 2
   wpt_i: 8
-  use_subgoal: True
+  use_subgoal: False
 
 topics: 
   image_topic: /zedm/zed_node/depth/depth_registered
