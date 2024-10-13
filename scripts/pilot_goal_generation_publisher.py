@@ -24,7 +24,7 @@ from pilot_deploy.inference import PilotAgent, get_inference_config
 
 from pilot_utils.transforms import transform_images, ObservationTransform
 from pilot_utils.deploy.deploy_utils import msg_to_pil
-from pilot_utils.deploy.modules import MovingWindowFilter, GoalPositionEstimator, RealtimeTraj
+from pilot_utils.deploy.modules import MovingWindowFilter, GoalPositionEstimator, RealtimeTraj, SubgoalsGen
 from pilot_utils.utils import tic, toc, from_numpy, normalize_data, xy_to_d_cos_sin, clip_angles
 from pilot_utils.data.data_utils import to_local_coords
 
@@ -200,6 +200,7 @@ class BaseGoalGenerator:
         # Filter and goal settings
         self.goal_to_target = np.array([1.0, 0.0])
         self.observed_target = False
+        self.latest_observed_obj_det = None
         
         self.smooth_goal_filter = MovingWindowFilter(window_size=self.params["sensor_moving_window_size"], data_dim=3)
         self.smoothen_time = self.params["smoothen_time"]
@@ -212,6 +213,11 @@ class BaseGoalGenerator:
         # Frames
         self.odom_frame = self.params["odom_frame"]
         self.base_frame = self.params["base_frame"]
+        
+        
+        # Subgoal generator
+        
+        self.use_subgoal = self.params["use_subgoal"]
 
         self.transformed_pose = PoseStamped()
         self.ros_transform = None
@@ -237,6 +243,8 @@ class BaseGoalGenerator:
             "pub_rate": rospy.get_param(self.node_name + "/model/pub_rate", default=10),
             "inference_rate": rospy.get_param(self.node_name + "/model/inference_rate", default=3),
             "wpt_i": rospy.get_param(self.node_name + "/model/wpt_i", default=2),
+            "use_subgoal": rospy.get_param(self.node_name + "/model/use_subgoal", default=False),
+
             "image_topic": rospy.get_param(self.node_name + "/topics/image_topic", default="/zedm/zed_node/depth/depth_registered"),
             "obj_det_topic": rospy.get_param(self.node_name + "/topics/obj_det_topic", default="/obj_detect_publisher_node/object"),
             "odom_topic": rospy.get_param(self.node_name + "/topics/odom_topic", default="/zedm/zed_node/odom"),
@@ -257,6 +265,9 @@ class BaseGoalGenerator:
 
         rospy.loginfo("  * inference_rate: " + str(params["inference_rate"]))
         rospy.loginfo("  * wpt_i: " + str(params["wpt_i"]))
+        rospy.loginfo("  * use_subgoal: " + str(params["use_subgoal"]))
+
+        
         rospy.loginfo("* Topics:")
         rospy.loginfo("  * image_topic: " + params["image_topic"])
         rospy.loginfo("  * obj_det_topic: " + params["obj_det_topic"])
@@ -322,8 +333,6 @@ class GoalGenerator(BaseGoalGenerator):
         
         
         self.goal_reached_pub = rospy.Publisher('/goal_reach', Bool, queue_size=10)
-
-        
         self.goal_reached = Bool(False)
 
         self.predcition_timer = rospy.Timer(rospy.Duration(1/self.inference_rate),
@@ -345,6 +354,15 @@ class GoalGenerator(BaseGoalGenerator):
             self.use_action_context = True
             self.sync_topics_list.append(self.odom_sub)
 
+        
+        # Initialize RealtimeTraj for managing and updating the trajectory
+        self.realtime_traj = RealtimeTraj()
+        self.start_time = rospy.Time.now()
+        
+        self.subgoal_gen = SubgoalsGen(threshold=0.5)
+        self.subgoal_to_target = None
+        
+        
         self.ats = message_filters.ApproximateTimeSynchronizer(
             fs=self.sync_topics_list,
             queue_size=10,
@@ -353,9 +371,7 @@ class GoalGenerator(BaseGoalGenerator):
         
         self.ats.registerCallback(self.topics_callback)
         
-        # Initialize RealtimeTraj for managing and updating the trajectory
-        self.realtime_traj = RealtimeTraj()
-        self.start_time = rospy.Time.now()
+        
         
         
 
@@ -412,11 +428,19 @@ class GoalGenerator(BaseGoalGenerator):
                 target_context_queue_tensor = from_numpy(np_curr_rel_pos)
 
                 # Prepare goal condition tensor
+
+                if self.use_subgoal and self.latest_observed_obj_det is not None:
+                    self.subgoal_to_target = self.subgoal_gen.sample_subgoal(self.latest_observed_obj_det,self.goal_to_target)
+                    goal_to_target = self.subgoal_to_target
+                    rospy.loginfo_throttle(3,f"Subgoal generated: {goal_to_target}")
+                else:
+                    goal_to_target = self.goal_to_target
+                    
                 if self.target_dim == 3:
-                        goal_rel_pos_to_target = xy_to_d_cos_sin(self.goal_to_target)
+                        goal_rel_pos_to_target = xy_to_d_cos_sin(goal_to_target)
                         goal_rel_pos_to_target[0] = normalize_data(data=goal_rel_pos_to_target[0], stats={'min': -self.max_depth / 1000, 'max': self.max_depth / 1000}, norm_type="maxmin")
                 elif self.target_dim == 2:
-                    goal_rel_pos_to_target = normalize_data(data=self.goal_to_target, stats={'min': -self.max_depth / 1000, 'max': self.max_depth / 1000}, norm_type="maxmin")
+                    goal_rel_pos_to_target = normalize_data(data=goal_to_target, stats={'min': -self.max_depth / 1000, 'max': self.max_depth / 1000}, norm_type="maxmin")
 
                 goal_to_target_tensor = from_numpy(goal_rel_pos_to_target)
 
@@ -534,9 +558,12 @@ class GoalGenerator(BaseGoalGenerator):
             self.latest_obj_det = list(obj_det_msg.objects[0].position)[:2] if self.observed_target else [0, 0]
             
             if self.observed_target:
-                goal_reached = self.is_goal_reached(np.array(self.latest_obj_det), self.goal_to_target)
+                self.latest_observed_obj_det = np.array((self.latest_obj_det))
+                goal_reached = self.is_goal_reached(self.latest_observed_obj_det, self.goal_to_target)
                 self.goal_reached.data = goal_reached
 
+            
+            
             self.target_context_queue.append(self.latest_obj_det)
             
             if odom_msg is not None:
