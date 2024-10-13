@@ -2,22 +2,22 @@ robot: go2 # turtlebot | go2 | nimrod
 
 frames:
   odom_frame: odom
-  base_frame: base_footprint
+  # base_frame: base_footprint
 
-  # base_frame: base_link
+  base_frame: base_link
   # base_frame: zedm_left_camera_frame
 
 model: 
   # model_name: pilot-go-to-the-pic-pidiff_2024-06-25_09-43-16
-  model_name: pilot_bsz128_c3_ac3_dsteps_72024-08-30_14-52-48
+  model_name: pilot_bsz20_c2_ac2_gcp0.2_mdp0.0_ph322024-10-09_11-50-35
   model_version: best_model # best_model | latest | <epoch_number> (int)
   # model_name: pilot-turtle-static-follower_2024-07-03_00-16-16
 
   frame_rate: 7 # NOTE: please pay atteniton that this value is similar to the sampling rate
                 # of the data collected to train the policy
   pub_rate: 4
-  inference_rate: 4
-  wpt_i: 0
+  inference_rate: 1
+  wpt_i: 8
 
 topics: 
   image_topic: /zedm/zed_node/depth/depth_registered

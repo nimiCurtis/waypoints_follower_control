@@ -24,7 +24,7 @@ from pilot_deploy.inference import PilotAgent, get_inference_config
 from pilot_utils.transforms import transform_images, ObservationTransform
 from pilot_utils.deploy.deploy_utils import msg_to_pil
 from pilot_utils.deploy.modules import MovingWindowFilter, GoalPositionEstimator, RealtimeTraj
-from pilot_utils.utils import tic, toc, from_numpy, normalize_data, xy_to_d_cos_sin, clip_angle
+from pilot_utils.utils import tic, toc, from_numpy, normalize_data, xy_to_d_cos_sin, clip_angles
 from pilot_utils.data.data_utils import to_local_coords
 
 
@@ -357,7 +357,7 @@ class GoalGenerator(BaseGoalGenerator):
                         frame_rate = {frame_rate}, 
                         wpt_i = {wpt_i}, 
                         smoothen_time = {smoothen_time}""".format(**config))
-        
+
         # Update the corresponding variables in your class
         self.frame_rate = config.frame_rate
         # self.pub_rate = config.pub_rate
@@ -422,7 +422,7 @@ class GoalGenerator(BaseGoalGenerator):
             avg_inference_time = np.mean(self.inference_times)
             rospy.loginfo_throttle(10, f"Average inference time (last {len(self.inference_times)}): {avg_inference_time:.4f} seconds.")
 
-            
+
             # Umi on legs
             # Extract translations and quaternions from waypoints
             translations = np.array([[wp[0], wp[1], 0.0] for wp in waypoints])  # Assuming z=0.0
@@ -465,8 +465,7 @@ class GoalGenerator(BaseGoalGenerator):
         # Publish the transformed pose
         if self.transformed_pose is not None:
             self.seq+=1
-            self.transformed_pose_smoothed = self.filter_pose(self.transformed_pose)
-            self.goal_pub_sensor.publish(self.transformed_pose_smoothed)
+            self.goal_pub_sensor.publish(self.transformed_pose)
             # self.goal_pub_sensor.publish(self.transformed_pose)
             self.path_pub.publish(self.path)
 
@@ -494,33 +493,6 @@ class GoalGenerator(BaseGoalGenerator):
                 self.latest_odom_pos = pos_yaw_from_odom(odom_msg=odom_msg)
                 self.action_context_queue.append(self.latest_odom_pos)
 
-
-    def filter_pose(self, pose_stamped: PoseStamped):
-        """
-        """
-        raw_pos = np.array([pose_stamped.pose.position.x,
-                            pose_stamped.pose.position.y,
-                            pose_stamped.pose.position.z])
-        
-        raw_or = np.array([pose_stamped.pose.orientation.x,
-                            pose_stamped.pose.orientation.y,
-                            pose_stamped.pose.orientation.z,
-                            pose_stamped.pose.orientation.w])
-
-        smoothed_pos = self.smooth_goal_filter.calculate_average(raw_pos)
-        
-        pose_stamped_filtered = PoseStamped()
-        pose_stamped_filtered.header.seq = pose_stamped.header.seq
-        pose_stamped_filtered.header.stamp = rospy.Time.now()
-        pose_stamped_filtered.header.frame_id = pose_stamped.header.frame_id
-        pose_stamped_filtered.pose.position.x = smoothed_pos[0]
-        pose_stamped_filtered.pose.position.y = smoothed_pos[1]
-        pose_stamped_filtered.pose.orientation.x = raw_or[0]
-        pose_stamped_filtered.pose.orientation.y = raw_or[1]
-        pose_stamped_filtered.pose.orientation.z = raw_or[2]
-        pose_stamped_filtered.pose.orientation.w = raw_or[3]
-        
-        return pose_stamped_filtered
 
 
 
@@ -682,10 +654,10 @@ class GoalGeneratorKalman(BaseGoalGenerator):
             rospy.loginfo_throttle(10, f"Average inference time (last {len(self.inference_times)}): {avg_inference_time:.4f} seconds.")
 
             dx_m, dy_m, hx_m, hy_m = waypoints[self.wpt_i]
-            yaw_m = clip_angle(np.arctan2(hy_m, hx_m))
+            yaw_m = clip_angles(np.arctan2(hy_m, hx_m))
             
             dx_m, dy_m, yaw_m = self.smooth_goal_filter.calculate_average(np.array([dx_m,dy_m,yaw_m]))
-            yaw_m = clip_angle(yaw_m)
+            yaw_m = clip_angles(yaw_m)
 
             model_pose_stamped = create_pose_stamped(dx_m, dy_m, yaw_m, self.base_frame, self.seq, current_time)
             
@@ -766,7 +738,7 @@ class GoalGeneratorKalman(BaseGoalGenerator):
         
         self.estimated_goal = self.goal_estimator.estimated_goal
         
-        dx, dy, yaw = self.estimated_goal[0], self.estimated_goal[1], clip_angle(self.estimated_goal[2])
+        dx, dy, yaw = self.estimated_goal[0], self.estimated_goal[1], clip_angles(self.estimated_goal[2])
         
         # Create and transform pose
         pose_stamped = create_pose_stamped(dx, dy, yaw, self.odom_frame, self.seq, current_time)
