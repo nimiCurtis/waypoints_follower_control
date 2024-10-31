@@ -2,13 +2,13 @@ robot: go2 # turtlebot | go2 | nimrod
 
 frames:
   odom_frame: odom
-  base_frame: base_footprint
+  # base_frame: base_footprint
 
-  # base_frame: base_link
+  base_frame: base_link
   # base_frame: zedm_left_camera_frame
 
 model: 
-  model_name: pilot_bsz128_c1_ac1_gcp0.2_mdp0.0_ph16_2024-10-09_20-26-18
+  model_name: pidiff_bsz16_c5_ac1_gcTrue_gcp0.1_ah16_ph32_tceTrue_ntmaxmin_2024-10-31_17-38-15
 
 # pilot_bsz64_c10_ac2_gcp0.2_mdp0.0_ph32_2024-10-10_15-46-25
 # pilot_bsz64_c5_ac2_gcp0.2_mdp0.0_ph32_2024-10-10_13-14-24
