@@ -8,21 +8,22 @@ frames:
   # base_frame: zedm_left_camera_frame
 
 model: 
-  model_name: pilot_bsz128_c1_ac1_gcp0.2_mdp0.0_ph16_2024-10-09_20-26-18
-
+  model_name: pilot_bsz128_c1_ac1_gcp0.0_mdp0.0_ph16_2024-10-13_07-41-04
+# pilot_bsz128_c1_ac1_gcp0.0_mdp0.0_ph16_2024-10-13_07-41-04
+  # pilot_bsz64_c1_ac1_gcp0.2_mdp0.0_ph32_2024-10-10_11-01-10
 # pilot_bsz64_c10_ac2_gcp0.2_mdp0.0_ph32_2024-10-10_15-46-25
 # pilot_bsz64_c5_ac2_gcp0.2_mdp0.0_ph32_2024-10-10_13-14-24
 # pilot_bsz128_c1_ac1_gcp0.2_mdp0.0_ph16_2024-10-09_20-26-18
 # pilot_bsz128_c10_ac2_gcp0.2_mdp0.0_ph16_2024-10-10_00-48-22
 
-  model_version: best_model # best_model | latest | <epoch_number> (int)
+  model_version: latest # best_model | latest | <epoch_number> (int)
 
   frame_rate: 12 # NOTE: please pay atteniton that this value is similar to the sampling rate
                 # of the data collected to train the policy
-  pub_rate: 10
-  inference_rate: 2
+  pub_rate: 4
+  inference_rate: 4
   wpt_i: 8
-  use_subgoal: False
+  use_subgoal: True
 
 topics: 
   image_topic: /zedm/zed_node/depth/depth_registered
