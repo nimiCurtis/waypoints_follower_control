@@ -190,11 +190,13 @@ class BaseGoalGenerator:
         self.transform = ObservationTransform(data_cfg=data_cfg).get_transform("test")
         self.context_size = data_cfg.context_size
         self.action_context_size = data_cfg.action_context_size
-        self.target_context = data_cfg.target_context
+        self.target_context_enable = data_cfg.target_context_enable
+        
+        # add goal condition
         self.target_dim = data_cfg.target_dim
 
         self.context_queue = deque(maxlen=self.context_size + 1)
-        self.target_context_queue = deque(maxlen=self.context_size + 1 if self.target_context else 1)
+        self.target_context_queue = deque(maxlen=self.context_size + 1 if self.target_context_enable else 0)
         self.action_context_queue = deque(maxlen=data_cfg.action_context_size + 1)
 
         # Filter and goal settings
@@ -236,8 +238,8 @@ class BaseGoalGenerator:
         
 
         params = {
-            "robot": rospy.get_param(self.node_name + "/robot", default="turtlebot"),
-            "model_name": rospy.get_param(self.node_name + "/model/model_name", default="pilot_bsz128_c1_ac1_gcp0.2_mdp0.0_ph16_2024-10-09_20-26-18"),
+            "robot": rospy.get_param(self.node_name + "/robot", default="go2"),
+            "model_name": rospy.get_param(self.node_name + "/model/model_name", default="vint_bsz80_c0_ac1_gcTrue_gcp0.1_ph16_tceTrue_ntmaxmin_2024-11-03_16-01-31"),
             "model_version": str(rospy.get_param(self.node_name + "/model/model_version", default="best_model")),
             "frame_rate": rospy.get_param(self.node_name + "/model/frame_rate", default=7),
             "pub_rate": rospy.get_param(self.node_name + "/model/pub_rate", default=10),
@@ -249,7 +251,7 @@ class BaseGoalGenerator:
             "obj_det_topic": rospy.get_param(self.node_name + "/topics/obj_det_topic", default="/obj_detect_publisher_node/object"),
             "odom_topic": rospy.get_param(self.node_name + "/topics/odom_topic", default="/zedm/zed_node/odom"),
             "odom_frame": rospy.get_param(self.node_name + "/frames/odom_frame", default="odom"),
-            "base_frame": rospy.get_param(self.node_name + "/frames/base_frame", default="base_footprint"),
+            "base_frame": rospy.get_param(self.node_name + "/frames/base_frame", default="base_link"),
             "sensor_moving_window_size": rospy.get_param(self.node_name + "/filter/sensor_moving_window_size", default=1),
             "smoothen_time": rospy.get_param(self.node_name + "/filter/smoothen_time", default=0.1),
 
@@ -346,15 +348,16 @@ class GoalGenerator(BaseGoalGenerator):
         
         self.sync_topics_list = [self.image_sub]
 
-        if self.target_context:
+        if self.target_context_enable:
             self.sync_topics_list.append(self.obj_det_sub)
 
         self.use_action_context = False
+        
+        ## Add action history info
         if self.action_context_size>0:
             self.use_action_context = True
             self.sync_topics_list.append(self.odom_sub)
 
-        
         # Initialize RealtimeTraj for managing and updating the trajectory
         self.realtime_traj = RealtimeTraj()
         self.start_time = rospy.Time.now()
@@ -397,8 +400,11 @@ class GoalGenerator(BaseGoalGenerator):
         
         # Perform inference at the specified inference rate
         if not(self.goal_reached.data):
-            if (len(self.context_queue) >= self.context_queue.maxlen) and (len(self.target_context_queue) >= self.target_context_queue.maxlen) and  (len(self.action_context_queue) >= self.action_context_queue.maxlen):
-
+            if (
+                (len(self.context_queue) >= self.context_queue.maxlen) 
+                and (len(self.target_context_queue) >= self.target_context_queue.maxlen) 
+                and  (len(self.action_context_queue) >= self.action_context_queue.maxlen)
+            ):
                 # Transform image data and prepare target context tensor
                 transformed_context_queue = transform_images(list(self.context_queue), transform=self.transform)
                 target_context_queue = np.array(self.target_context_queue)
@@ -562,8 +568,6 @@ class GoalGenerator(BaseGoalGenerator):
                 goal_reached = self.is_goal_reached(self.latest_observed_obj_det, self.goal_to_target)
                 self.goal_reached.data = goal_reached
 
-            
-            
             self.target_context_queue.append(self.latest_obj_det)
             
             if odom_msg is not None:
@@ -604,7 +608,7 @@ class GoalGeneratorKalman(BaseGoalGenerator):
         
         self.sync_topics_list = [self.image_sub]
 
-        if self.target_context:
+        if self.target_context_enable:
             self.sync_topics_list.append(self.obj_det_sub)
 
         if self.action_context_size>0:

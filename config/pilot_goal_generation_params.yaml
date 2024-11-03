@@ -8,13 +8,12 @@ frames:
   # base_frame: zedm_left_camera_frame
 
 model: 
-  model_name: pilot_bsz128_c1_ac1_gcp0.0_mdp0.0_ph16_2024-10-13_07-41-04
-# pilot_bsz128_c1_ac1_gcp0.0_mdp0.0_ph16_2024-10-13_07-41-04
-  # pilot_bsz64_c1_ac1_gcp0.2_mdp0.0_ph32_2024-10-10_11-01-10
-# pilot_bsz64_c10_ac2_gcp0.2_mdp0.0_ph32_2024-10-10_15-46-25
-# pilot_bsz64_c5_ac2_gcp0.2_mdp0.0_ph32_2024-10-10_13-14-24
-# pilot_bsz128_c1_ac1_gcp0.2_mdp0.0_ph16_2024-10-09_20-26-18
-# pilot_bsz128_c10_ac2_gcp0.2_mdp0.0_ph16_2024-10-10_00-48-22
+  # model_name: vint_bsz80_c0_ac1_gcTrue_gcp0.1_ph16_tceTrue_ntmaxmin_2024-11-03_16-01-31
+  # model_name: cnn_mlp_bsz80_c0_ac1_gcFalse_gcp0.1_ph16_tceTrue_ntmaxmin_2024-11-03_15-20-01
+  # model_name: pidiff_bsz80_c0_ac1_gcTrue_gcp0.1_ph32_tceTrue_ntmaxmin_2024-10-31_17-41-51
+  # model_name: pidiff_bsz80_c1_ac1_gcTrue_gcp0.1_ph32_tceTrue_ntmaxmin_2024-11-01_02-02-26
+  # model_name: pidiff_bsz80_c0_ac1_gcTrue_gcp0.1_ph32_tceTrue_ntstandard_2024-10-31_21-55-20
+  model_name: pidiff_bsz80_c1_ac1_gcFalse_gcp0.1_ph32_tceFalse_ntstandard_2024-11-01_21-45-37
 
   model_version: latest # best_model | latest | <epoch_number> (int)
 
@@ -34,7 +33,7 @@ topics:
 filter:
 
   sensor_moving_window_size: 1
-  smoothen_time: 0.1
+  smoothen_time: 0.0
 
   kalman:
     enable: False
