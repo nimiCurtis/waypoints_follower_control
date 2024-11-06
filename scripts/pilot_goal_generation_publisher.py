@@ -14,7 +14,8 @@ from tf.transformations import quaternion_from_euler, euler_from_quaternion
 from tf2_ros import Buffer,BufferInterface, TransformListener, LookupException, ConnectivityException, ExtrapolationException
 import tf2_geometry_msgs
 from geometry_msgs.msg import PoseStamped
-
+from std_srvs.srv import SetBool, SetBoolRequest, SetBoolResponse
+from std_msgs.msg import Bool
 
 import message_filters
 from zed_interfaces.msg import ObjectsStamped
@@ -31,6 +32,10 @@ from pilot_utils.data.data_utils import to_local_coords
 
 from waypoints_follower_control.cfg import ParametersConfig
 from dynamic_reconfigure.server import Server
+
+
+GREEN_COLOR = "\033[92m"
+RESET_COLOR = "\033[0m"
 
 def pos_yaw_from_odom(odom_msg:Odometry)->list:
     """
@@ -346,6 +351,17 @@ class GoalGenerator(BaseGoalGenerator):
         self.srv = Server(ParametersConfig, self.cfg_callback)
         
         
+        # Initialize the service client without waiting
+        self.recording_service_client = rospy.ServiceProxy('/zion/zed_recording_node/record', SetBool)
+        
+        # Track if recording is active and if service is available
+        self.recording_active = True
+        self.recording_service_available = False
+        
+        # Timer to periodically check for service availability
+        self.service_check_timer = rospy.Timer(rospy.Duration(5.0), self.check_recording_service)
+        
+        
         self.sync_topics_list = [self.image_sub]
 
         if self.target_context_enable:
@@ -361,6 +377,7 @@ class GoalGenerator(BaseGoalGenerator):
         # Initialize RealtimeTraj for managing and updating the trajectory
         self.realtime_traj = RealtimeTraj()
         self.start_time = rospy.Time.now()
+        self.last_service_call_time = rospy.Time.now()
         
         self.subgoal_gen = SubgoalsGen(threshold=0.5)
         self.subgoal_to_target = None
@@ -380,6 +397,19 @@ class GoalGenerator(BaseGoalGenerator):
 
         rospy.loginfo("GoalGenerator initialized successfully.")
 
+    def check_recording_service(self, event):
+        """
+        Timer callback to periodically check if the recording service is available.
+        """
+        try:
+            rospy.wait_for_service('/zion/zed_recording_node/record', timeout=1.0)
+            if not self.recording_service_available:
+                rospy.loginfo("Recording service is now available.")
+            self.recording_service_available = True
+        except rospy.ROSException:
+            if self.recording_service_available:
+                rospy.logwarn("Recording service is unavailable.")
+            self.recording_service_available = False
 
     def cfg_callback(self, config, level):
         rospy.loginfo("""Reconfigure Request:
@@ -438,7 +468,7 @@ class GoalGenerator(BaseGoalGenerator):
                 if self.use_subgoal and self.latest_observed_obj_det is not None:
                     self.subgoal_to_target = self.subgoal_gen.sample_subgoal(self.latest_observed_obj_det,self.goal_to_target)
                     goal_to_target = self.subgoal_to_target
-                    rospy.loginfo_throttle(3,f"Subgoal generated: {goal_to_target}")
+                    rospy.loginfo_throttle(3,f"Current target position {self.latest_observed_obj_det} | Subgoal generated: {goal_to_target}")
                 else:
                     goal_to_target = self.goal_to_target
                     
@@ -503,7 +533,10 @@ class GoalGenerator(BaseGoalGenerator):
                     self.path = None
         
         else:
+            
+            
             try:
+                rospy.loginfo_throttle(1,f"{GREEN_COLOR}Goal reached!{RESET_COLOR}")
                 current_time = rospy.Time.now()
                 pose_in_base = PoseStamped()
                 
@@ -529,6 +562,27 @@ class GoalGenerator(BaseGoalGenerator):
                 self.transformed_pose.header.seq = self.seq
                 
                 self.seq+=1
+                
+                # Stop recording if the goal is reached
+                if self.recording_service_available and (current_time - self.last_service_call_time).to_sec() > 15.:  # Only stop if recording is currently active
+                    try:
+                        # Create a SetBool request with data=False to stop recording
+                        request = SetBoolRequest()
+                        request.data = False
+                        response = self.recording_service_client(request)
+                        # Update the last successful call time
+                        self.last_service_call_time = current_time
+                        
+                        if response.success:
+                            rospy.loginfo(f"{GREEN_COLOR}Goal reached! Stopped recording successfully.{RESET_COLOR}")
+                        else:
+                            rospy.logwarn("Failed to stop recording.")
+
+                        # Set recording_active to False as recording is now stopped
+                        # self.recording_active = False
+                    except rospy.ServiceException as e:
+                        rospy.logerr(f"Service call failed: {e}")
+                        self.recording_service_available = False
                 
             except (LookupException, ConnectivityException, ExtrapolationException) as e:
                 rospy.logwarn(f"Failed to transform pose: {str(e)}")
