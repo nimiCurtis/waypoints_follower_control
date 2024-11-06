@@ -201,7 +201,7 @@ class BaseGoalGenerator:
         self.target_dim = data_cfg.target_dim
 
         self.context_queue = deque(maxlen=self.context_size + 1)
-        self.target_context_queue = deque(maxlen=self.context_size + 1 if self.target_context_enable else 0)
+        self.target_context_queue = deque(maxlen=self.context_size + 1)
         self.action_context_queue = deque(maxlen=data_cfg.action_context_size + 1)
 
         # Filter and goal settings
@@ -244,7 +244,7 @@ class BaseGoalGenerator:
 
         params = {
             "robot": rospy.get_param(self.node_name + "/robot", default="go2"),
-            "model_name": rospy.get_param(self.node_name + "/model/model_name", default="vint_bsz80_c0_ac1_gcTrue_gcp0.1_ph16_tceTrue_ntmaxmin_2024-11-03_16-01-31"),
+            "model_name": rospy.get_param(self.node_name + "/model/model_name", default="pidiff_bsz80_c1_ac1_gcTrue_gcp0.1_ph32_tceTrue_ntmaxmin_2024-11-01_02-02-26"),
             "model_version": str(rospy.get_param(self.node_name + "/model/model_version", default="best_model")),
             "frame_rate": rospy.get_param(self.node_name + "/model/frame_rate", default=7),
             "pub_rate": rospy.get_param(self.node_name + "/model/pub_rate", default=10),
@@ -364,8 +364,8 @@ class GoalGenerator(BaseGoalGenerator):
         
         self.sync_topics_list = [self.image_sub]
 
-        if self.target_context_enable:
-            self.sync_topics_list.append(self.obj_det_sub)
+        # if self.target_context_enable:
+        self.sync_topics_list.append(self.obj_det_sub)
 
         self.use_action_context = False
         
