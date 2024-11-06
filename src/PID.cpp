@@ -154,7 +154,7 @@ namespace wfc {
         double dyaw = (*goal_xyyaw_in_odom_)[2] - curr_xyyaw_in_odom[2];
         dyaw = clip_angle(dyaw);
 
-        if (std::abs(dyaw)<=0.05){
+        if (std::abs(dyaw)<=0.02){
                 dyaw = 0.0;
         }
         // double dyaw = atan2(dy, dx);
