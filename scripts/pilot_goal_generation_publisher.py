@@ -379,7 +379,7 @@ class GoalGenerator(BaseGoalGenerator):
         self.start_time = rospy.Time.now()
         self.last_service_call_time = rospy.Time.now()
         
-        self.subgoal_gen = SubgoalsGen(threshold=0.5)
+        self.subgoal_gen = SubgoalsGen(threshold=1.5)
         self.subgoal_to_target = None
         
         
