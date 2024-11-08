@@ -16,6 +16,7 @@ import tf2_geometry_msgs
 from geometry_msgs.msg import PoseStamped
 from std_srvs.srv import SetBool, SetBoolRequest, SetBoolResponse
 from std_msgs.msg import Bool
+from visualization_msgs.msg import Marker
 
 import message_filters
 from zed_interfaces.msg import ObjectsStamped
@@ -244,13 +245,13 @@ class BaseGoalGenerator:
 
         params = {
             "robot": rospy.get_param(self.node_name + "/robot", default="go2"),
-            "model_name": rospy.get_param(self.node_name + "/model/model_name", default="pidiff_bsz80_c1_ac1_gcTrue_gcp0.1_ph32_tceTrue_ntmaxmin_2024-11-01_02-02-26"),
+            "model_name": rospy.get_param(self.node_name + "/model/model_name", default="pidiff_bsz80_c1_ac1_gcTrue_gcp0.1_ph32_tceTrue_ntmaxmin_dnsddpm_2024-11-04_20-40-12"),
             "model_version": str(rospy.get_param(self.node_name + "/model/model_version", default="best_model")),
             "frame_rate": rospy.get_param(self.node_name + "/model/frame_rate", default=7),
             "pub_rate": rospy.get_param(self.node_name + "/model/pub_rate", default=10),
             "inference_rate": rospy.get_param(self.node_name + "/model/inference_rate", default=3),
             "wpt_i": rospy.get_param(self.node_name + "/model/wpt_i", default=2),
-            "use_subgoal": rospy.get_param(self.node_name + "/model/use_subgoal", default=False),
+            "use_subgoal": rospy.get_param(self.node_name + "/model/use_subgoal", default=True),
 
             "image_topic": rospy.get_param(self.node_name + "/topics/image_topic", default="/zedm/zed_node/depth/depth_registered"),
             "obj_det_topic": rospy.get_param(self.node_name + "/topics/obj_det_topic", default="/obj_detect_publisher_node/object"),
@@ -337,7 +338,9 @@ class GoalGenerator(BaseGoalGenerator):
         self.obj_det_sub = message_filters.Subscriber(self.params["obj_det_topic"], ObjectsStamped)
         self.odom_sub = message_filters.Subscriber(self.params["odom_topic"], Odometry)
         self.goal_pub_sensor = rospy.Publisher('/goal_pose_model', PoseStamped, queue_size=10)
-        
+        # Publisher for the subgoal marker
+        self.subgoal_marker_pub = rospy.Publisher('/subgoal_marker', Marker, queue_size=10)
+
         
         self.goal_reached_pub = rospy.Publisher('/goal_reach', Bool, queue_size=10)
         self.goal_reached = Bool(False)
@@ -357,7 +360,7 @@ class GoalGenerator(BaseGoalGenerator):
         # Track if recording is active and if service is available
         self.recording_active = True
         self.recording_service_available = False
-        
+        self.goal_reached_run_timer = False
         # Timer to periodically check for service availability
         self.service_check_timer = rospy.Timer(rospy.Duration(5.0), self.check_recording_service)
         
@@ -378,8 +381,9 @@ class GoalGenerator(BaseGoalGenerator):
         self.realtime_traj = RealtimeTraj()
         self.start_time = rospy.Time.now()
         self.last_service_call_time = rospy.Time.now()
+        self.last_goal_reached = rospy.Time.now()
         
-        self.subgoal_gen = SubgoalsGen(threshold=1.5)
+        self.subgoal_gen = SubgoalsGen(threshold=0.5)
         self.subgoal_to_target = None
         
         
@@ -454,6 +458,7 @@ class GoalGenerator(BaseGoalGenerator):
 
                 target_context_mask = np.sum(target_context_queue == np.zeros((2,)), axis=1) == 2
                 np_curr_rel_pos = np.zeros((target_context_queue.shape[0], self.target_dim))
+                
                 if self.target_dim == 3:
                     np_curr_rel_pos[~target_context_mask] = xy_to_d_cos_sin(target_context_queue[~target_context_mask])
                     np_curr_rel_pos[~target_context_mask, 0] = normalize_data(data=np_curr_rel_pos[~target_context_mask, 0], stats={'min': -self.max_depth / 1000, 'max': self.max_depth / 1000}, norm_type="maxmin")
@@ -466,12 +471,17 @@ class GoalGenerator(BaseGoalGenerator):
                 # Prepare goal condition tensor
 
                 if self.use_subgoal and self.latest_observed_obj_det is not None:
-                    self.subgoal_to_target = self.subgoal_gen.sample_subgoal(self.latest_observed_obj_det,self.goal_to_target)
+                    self.subgoal_to_target, radius = self.subgoal_gen.sample_subgoal(self.latest_observed_obj_det,self.goal_to_target)
                     goal_to_target = self.subgoal_to_target
                     rospy.loginfo_throttle(3,f"Current target position {self.latest_observed_obj_det} | Subgoal generated: {goal_to_target}")
+                    # Publish the subgoal marker
+                    self.publish_subgoal_marker(self.latest_observed_obj_det, self.base_frame, radius)
                 else:
                     goal_to_target = self.goal_to_target
-                    
+                
+                
+                
+                
                 if self.target_dim == 3:
                         goal_rel_pos_to_target = xy_to_d_cos_sin(goal_to_target)
                         goal_rel_pos_to_target[0] = normalize_data(data=goal_rel_pos_to_target[0], stats={'min': -self.max_depth / 1000, 'max': self.max_depth / 1000}, norm_type="maxmin")
@@ -562,28 +572,7 @@ class GoalGenerator(BaseGoalGenerator):
                 self.transformed_pose.header.seq = self.seq
                 
                 self.seq+=1
-                
-                # Stop recording if the goal is reached
-                if self.recording_service_available and (current_time - self.last_service_call_time).to_sec() > 15.:  # Only stop if recording is currently active
-                    try:
-                        # Create a SetBool request with data=False to stop recording
-                        request = SetBoolRequest()
-                        request.data = False
-                        response = self.recording_service_client(request)
-                        # Update the last successful call time
-                        self.last_service_call_time = current_time
-                        
-                        if response.success:
-                            rospy.loginfo(f"{GREEN_COLOR}Goal reached! Stopped recording successfully.{RESET_COLOR}")
-                        else:
-                            rospy.logwarn("Failed to stop recording.")
 
-                        # Set recording_active to False as recording is now stopped
-                        # self.recording_active = False
-                    except rospy.ServiceException as e:
-                        rospy.logerr(f"Service call failed: {e}")
-                        self.recording_service_available = False
-                
             except (LookupException, ConnectivityException, ExtrapolationException) as e:
                 rospy.logwarn(f"Failed to transform pose: {str(e)}")
                 self.transformed_pose = None  # Ensure the transformed_pose is not used if transformation fails
@@ -631,6 +620,35 @@ class GoalGenerator(BaseGoalGenerator):
         ## pub goal reached
         self.goal_reached_pub.publish(self.goal_reached)
         
+        if self.goal_reached.data and not(self.goal_reached_run_timer):
+            self.goal_reached_run_timer = True
+            self.last_goal_reached = current_time
+
+        # Stop recording if the goal is reached
+        if self.recording_service_available \
+            and self.goal_reached_run_timer \
+            and (current_time - self.last_goal_reached).to_sec() > 1 \
+            and (current_time - self.last_service_call_time).to_sec() > 15.:  # Only stop if recording is currently active
+            try:
+                # Create a SetBool request with data=False to stop recording
+                request = SetBoolRequest()
+                request.data = False
+                response = self.recording_service_client(request)
+                # Update the last successful call time
+                self.last_service_call_time = current_time
+                self.goal_reached_run_timer = False
+                
+                if response.success:
+                    rospy.loginfo(f"{GREEN_COLOR}Goal reached! Stopped recording successfully.{RESET_COLOR}")
+                else:
+                    rospy.logwarn("Failed to stop recording.")
+
+                # Set recording_active to False as recording is now stopped
+                # self.recording_active = False
+            except rospy.ServiceException as e:
+                rospy.logerr(f"Service call failed: {e}")
+                self.recording_service_available = False
+        
 
     def is_goal_reached(self,latest_rel_pose:np.ndarray, goal_rel_pose:np.ndarray)->bool:
         # Calculate the Euclidean distance between the latest_rel_pose and goal_rel_pose
@@ -638,7 +656,47 @@ class GoalGenerator(BaseGoalGenerator):
         
         # Check if the distance is within the threshold
         return distance <= self.threshold
+    
+    
+    def publish_subgoal_marker(self, subgoal_position, frame_id, radius):
+        """
+        Publishes the subgoal as a Marker message in the base_link frame.
 
+        Args:
+            subgoal_position (np.ndarray): The position of the subgoal in the base_link frame.
+        """
+        marker = Marker()
+        marker.header.frame_id = frame_id
+        marker.header.stamp = rospy.Time.now()
+        marker.ns = "subgoal_marker"
+        marker.id = 0
+        marker.type = Marker.CYLINDER  # Using CYLINDER to create a ring appearance
+        marker.action = Marker.ADD
+
+        # Set the position of the marker
+        marker.pose.position.x = subgoal_position[0]
+        marker.pose.position.y = subgoal_position[1]
+        marker.pose.position.z = 0.0  # Adjust the z-position if needed
+
+        # Optional: Set orientation of the marker if needed
+        marker.pose.orientation.x = 0.0
+        marker.pose.orientation.y = 0.0
+        marker.pose.orientation.z = 0.0
+        marker.pose.orientation.w = 1.0
+
+        # Define the scale of the marker for a ring-like effect
+        marker.scale.x = radius  # Outer diameter of the ring
+        marker.scale.y = radius  # Outer diameter of the ring
+        marker.scale.z = 0.02  # Small height to make it look like a ring in the XY plane
+
+        # Define the color of the marker
+        marker.color.r = 0.5
+        marker.color.g = 0.5
+        marker.color.b = 0.0
+        marker.color.a = 0.3  # Alpha (transparency), 1.0 is opaque
+
+        # Publish the marker
+        self.subgoal_marker_pub.publish(marker)
 
 ## TODO: update the kalman filter
 class GoalGeneratorKalman(BaseGoalGenerator):
