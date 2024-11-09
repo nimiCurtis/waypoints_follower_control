@@ -245,7 +245,7 @@ class BaseGoalGenerator:
 
         params = {
             "robot": rospy.get_param(self.node_name + "/robot", default="go2"),
-            "model_name": rospy.get_param(self.node_name + "/model/model_name", default="pidiff_bsz80_c1_ac1_gcTrue_gcp0.1_ph32_tceTrue_ntmaxmin_dnsddpm_2024-11-04_20-40-12"),
+            "model_name": rospy.get_param(self.node_name + "/model/model_name", default="pidiff_bsz128_c4_ac4_gcTrue_gcp0.5_ph16_tceTrue_ntmaxmin_dnsddpm_2024-11-08_15-01-23"),
             "model_version": str(rospy.get_param(self.node_name + "/model/model_version", default="best_model")),
             "frame_rate": rospy.get_param(self.node_name + "/model/frame_rate", default=7),
             "pub_rate": rospy.get_param(self.node_name + "/model/pub_rate", default=10),
@@ -425,7 +425,7 @@ class GoalGenerator(BaseGoalGenerator):
         self.frame_rate = config.frame_rate
         # self.pub_rate = config.pub_rate
         # self.inference_rate = config.inference_rate
-        self.wpt_i = config.wpt_i
+        self.wpt_i = min(config.wpt_i, self.model.action_horizon-1)
         self.smoothen_time = config.smoothen_time
 
         return config
@@ -685,8 +685,8 @@ class GoalGenerator(BaseGoalGenerator):
         marker.pose.orientation.w = 1.0
 
         # Define the scale of the marker for a ring-like effect
-        marker.scale.x = radius  # Outer diameter of the ring
-        marker.scale.y = radius  # Outer diameter of the ring
+        marker.scale.x = 2*radius  # Outer diameter of the ring
+        marker.scale.y = 2*radius  # Outer diameter of the ring
         marker.scale.z = 0.02  # Small height to make it look like a ring in the XY plane
 
         # Define the color of the marker

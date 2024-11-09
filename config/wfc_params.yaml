@@ -10,7 +10,7 @@ topics:
 
 # Control
 control:
-  ctrl_loop_freq: 10  # [hz]
+  ctrl_loop_freq: 20  # [hz]
   rotate_dist_threshold: 0.1 # [m]
   linear:
     max_vel: 2. # change depend on robot config
@@ -19,17 +19,17 @@ control:
     ki_x: 0.0
     kd_x: 0.0
 
-    kp_y: 0.05
+    kp_y: 0.1
     ki_y: 0.0
     kd_y: 0.0
 
   angular:
-    max_vel: 1.
-    min_vel: -1.
-    kp: 0.12
+    max_vel: 1.8
+    min_vel: -1.8
+    kp: 0.15
     ki: 0.0
     kd: 0.0
 
   smoothing:
-    k: 0.5  # Coefficient for current command influence
-    e: 0.1  # Coefficient for previous raw command influence
+    k: 0.7  # Coefficient for current command influence
+    e: 0.05  # Coefficient for previous raw command influence
