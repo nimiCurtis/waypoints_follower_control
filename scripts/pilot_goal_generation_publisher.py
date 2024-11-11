@@ -201,10 +201,25 @@ class BaseGoalGenerator:
         # add goal condition
         self.target_dim = data_cfg.target_dim
 
+        # Frames
+        self.odom_frame = self.params["odom_frame"]
+        self.base_frame = self.params["base_frame"]
+        
+        # Setup inference timing
+        self.frame_rate = self.params["frame_rate"]
+        self.pub_rate = self.params["pub_rate"]
+        self.inference_rate = self.params["inference_rate"]
+        self.inference_times = deque(maxlen=self.inference_rate)
+        
+        
         self.context_queue = deque(maxlen=self.context_size + 1)
         self.target_context_queue = deque(maxlen=self.context_size + 1)
         self.action_context_queue = deque(maxlen=data_cfg.action_context_size + 1)
+        self.vision_memory_queue = deque(maxlen=max(int(self.frame_rate/2),1))
+        self.vision_memory_msgs = deque(maxlen=max(int(self.frame_rate/2),1))
 
+        self.linear_memory_queue = deque(maxlen=max(int(self.frame_rate/2),1))
+        
         # Filter and goal settings
         self.goal_to_target = np.array([1.0, 0.0])
         self.observed_target = False
@@ -212,15 +227,9 @@ class BaseGoalGenerator:
         
         self.smooth_goal_filter = MovingWindowFilter(window_size=self.params["sensor_moving_window_size"], data_dim=3)
         self.smoothen_time = self.params["smoothen_time"]
-        # Setup inference timing
-        self.frame_rate = self.params["frame_rate"]
-        self.pub_rate = self.params["pub_rate"]
-        self.inference_rate = self.params["inference_rate"]
-        self.inference_times = deque(maxlen=self.inference_rate)
+        
 
-        # Frames
-        self.odom_frame = self.params["odom_frame"]
-        self.base_frame = self.params["base_frame"]
+
         
         
         # Subgoal generator
@@ -245,7 +254,7 @@ class BaseGoalGenerator:
 
         params = {
             "robot": rospy.get_param(self.node_name + "/robot", default="go2"),
-            "model_name": rospy.get_param(self.node_name + "/model/model_name", default="pidiff_bsz128_c4_ac4_gcTrue_gcp0.5_ph16_tceTrue_ntmaxmin_dnsddpm_2024-11-08_15-01-23"),
+            "model_name": rospy.get_param(self.node_name + "/model/model_name", default="pidiff_bsz128_c3_ac2_gcTrue_gcp0.3_ph16_tceTrue_ntmaxmin_dnsddpm_2024-11-11_12-52-08"),
             "model_version": str(rospy.get_param(self.node_name + "/model/model_version", default="best_model")),
             "frame_rate": rospy.get_param(self.node_name + "/model/frame_rate", default=7),
             "pub_rate": rospy.get_param(self.node_name + "/model/pub_rate", default=10),
@@ -332,7 +341,7 @@ class GoalGenerator(BaseGoalGenerator):
         """
         super().__init__()
         
-        self.threshold = 0.1
+        self.threshold = 0.4
         # Subscribers and synchronizer for image and object detection topics
         self.image_sub = message_filters.Subscriber(self.params["image_topic"], Image)
         self.obj_det_sub = message_filters.Subscriber(self.params["obj_det_topic"], ObjectsStamped)
@@ -340,7 +349,7 @@ class GoalGenerator(BaseGoalGenerator):
         self.goal_pub_sensor = rospy.Publisher('/goal_pose_model', PoseStamped, queue_size=10)
         # Publisher for the subgoal marker
         self.subgoal_marker_pub = rospy.Publisher('/subgoal_marker', Marker, queue_size=10)
-
+        self.memory_image_pub = rospy.Publisher('/memory', Image, queue_size=10)
         
         self.goal_reached_pub = rospy.Publisher('/goal_reach', Bool, queue_size=10)
         self.goal_reached = Bool(False)
@@ -441,6 +450,9 @@ class GoalGenerator(BaseGoalGenerator):
             ):
                 # Transform image data and prepare target context tensor
                 transformed_context_queue = transform_images(list(self.context_queue), transform=self.transform)
+                
+                
+
                 target_context_queue = np.array(self.target_context_queue)
                 
                 prev_actions = None
@@ -456,20 +468,28 @@ class GoalGenerator(BaseGoalGenerator):
                     prev_actions = from_numpy(prev_actions)
 
 
-                target_context_mask = np.sum(target_context_queue == np.zeros((2,)), axis=1) == 2
-                np_curr_rel_pos = np.zeros((target_context_queue.shape[0], self.target_dim))
                 
-                if self.target_dim == 3:
-                    np_curr_rel_pos[~target_context_mask] = xy_to_d_cos_sin(target_context_queue[~target_context_mask])
-                    np_curr_rel_pos[~target_context_mask, 0] = normalize_data(data=np_curr_rel_pos[~target_context_mask, 0], stats={'min': -self.max_depth / 1000, 'max': self.max_depth / 1000}, norm_type="maxmin")
-                elif self.target_dim == 2:
-                    np_curr_rel_pos[~target_context_mask] = normalize_data(data=target_context_queue[~target_context_mask], stats={'min': -self.max_depth / 1000, 'max': self.max_depth / 1000}, norm_type="maxmin" )
+                target_context_mask = np.sum(target_context_queue == np.zeros((2,)), axis=1) == 2
+                
+                if np.all(target_context_mask):
+                    transformed_vision_memory_img = transform_images([self.vision_memory_queue[0]], transform=self.transform)
+                    normalized_lin_mem = normalize_data(data=self.linear_memory_queue[0], stats={'min': -self.max_depth / 1000, 'max': self.max_depth / 1000}, norm_type="maxmin" )
+                    self.memory_image_pub.publish(self.vision_memory_msgs[0])
+                    rospy.loginfo("Using memory!")
+                else:
+                    transformed_vision_memory_img = transform_images([self.vision_memory_queue[-1]], transform=self.transform)
+                    normalized_lin_mem = normalize_data(data=self.linear_memory_queue[-1], stats={'min': -self.max_depth / 1000, 'max': self.max_depth / 1000}, norm_type="maxmin" )
+                    self.memory_image_pub.publish(self.vision_memory_msgs[-1])
+
+                # TODO:transform memory vision
+                
+                np_curr_rel_pos = np.zeros((target_context_queue.shape[0], self.target_dim))
+                np_curr_rel_pos[~target_context_mask] = normalize_data(data=target_context_queue[~target_context_mask], stats={'min': -self.max_depth / 1000, 'max': self.max_depth / 1000}, norm_type="maxmin" )
 
 
                 target_context_queue_tensor = from_numpy(np_curr_rel_pos)
 
                 # Prepare goal condition tensor
-
                 if self.use_subgoal and self.latest_observed_obj_det is not None:
                     self.subgoal_to_target, radius = self.subgoal_gen.sample_subgoal(self.latest_observed_obj_det,self.goal_to_target)
                     goal_to_target = self.subgoal_to_target
@@ -478,25 +498,24 @@ class GoalGenerator(BaseGoalGenerator):
                     self.publish_subgoal_marker(self.latest_observed_obj_det, self.base_frame, radius)
                 else:
                     goal_to_target = self.goal_to_target
-                
-                
-                
-                
-                if self.target_dim == 3:
-                        goal_rel_pos_to_target = xy_to_d_cos_sin(goal_to_target)
-                        goal_rel_pos_to_target[0] = normalize_data(data=goal_rel_pos_to_target[0], stats={'min': -self.max_depth / 1000, 'max': self.max_depth / 1000}, norm_type="maxmin")
-                elif self.target_dim == 2:
-                    goal_rel_pos_to_target = normalize_data(data=goal_to_target, stats={'min': -self.max_depth / 1000, 'max': self.max_depth / 1000}, norm_type="maxmin")
 
+                goal_rel_pos_to_target = normalize_data(data=goal_to_target, stats={'min': -self.max_depth / 1000, 'max': self.max_depth / 1000}, norm_type="maxmin")
+
+                normalized_lin_mem_tensor = from_numpy(normalized_lin_mem)
                 goal_to_target_tensor = from_numpy(goal_rel_pos_to_target)
 
                 # Perform inference to get waypoints
                 t = tic()
                 current_time = (rospy.Time.now() - self.start_time).to_sec()
+                
+                ## TODO: insert to model
                 waypoints = self.model(transformed_context_queue,
                                     target_context_queue_tensor,
                                     goal_to_target_tensor,
-                                    prev_actions)
+                                    prev_actions,
+                                    transformed_vision_memory_img,
+                                    normalized_lin_mem_tensor
+                                    )
                 dt_infer = toc(t)
                 # rospy.loginfo(f"Inferencing time: {dt_infer:.4f} seconds.")
                 self.inference_times.append(dt_infer)
@@ -610,6 +629,14 @@ class GoalGenerator(BaseGoalGenerator):
                 self.latest_observed_obj_det = np.array((self.latest_obj_det))
                 goal_reached = self.is_goal_reached(self.latest_observed_obj_det, self.goal_to_target)
                 self.goal_reached.data = goal_reached
+
+                ## append to queue of vision and lin memory
+                self.vision_memory_queue.append(self.latest_image)
+                self.linear_memory_queue.append(self.latest_observed_obj_det)
+                
+                self.vision_memory_msgs.append(image_msg)
+                
+
 
             self.target_context_queue.append(self.latest_obj_det)
             
