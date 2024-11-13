@@ -153,14 +153,15 @@ namespace wfc {
 
         double dyaw = (*goal_xyyaw_in_odom_)[2] - curr_xyyaw_in_odom[2];
         dyaw = clip_angle(dyaw);
-
-        if (std::abs(dyaw)<=0.02){
+        // ROS_INFO("dyaw: %f " , dyaw);
+        if (std::abs(dyaw)<=0.01){
                 dyaw = 0.0;
+                ROS_INFO("Clip yaw command to 0 !!!");
         }
         // double dyaw = atan2(dy, dx);
 
         if (dist < rotate_dist_threshold_) {
-            // ROS_INFO("inside radi");
+            ROS_INFO("Inside rotate_dist_threshold >> lin_vel_x = 0.0");
             // ROS_INFO("goal_xyyaw_in_odom_: %f | curr_xyyaw_in_odom: %f", (*goal_xyyaw_in_odom_)[2], curr_xyyaw_in_odom[2]);
             lin_vel_x = 0.0;
         }
@@ -177,13 +178,13 @@ namespace wfc {
         // yaw_integral_error_ += yaw_error*dt;
         double yaw_derivative_error_ = (yaw_error - prev_yaw_error_)/dt;
 
-        if ((*goal_xyyaw_in_odom_)[2] == 0 && yaw_error==0){
-            yaw_integral_error_ = 0;
-        }
+        // if ((*goal_xyyaw_in_odom_)[2] == 0 && yaw_error==0){
+        //     yaw_integral_error_ = 0;
+        // }
 
         // get the linear velocity
         // double angular_vel = ang_Kp_* error;
-        double angular_vel = ang_Kp_* yaw_error + ang_Ki_ * yaw_integral_error_ + ang_Kd_ * yaw_derivative_error_;
+        double angular_vel = ang_Kp_* yaw_error + ang_Kd_ * yaw_derivative_error_;
         prev_yaw_error_ = yaw_error;
         
 

@@ -403,10 +403,7 @@ class GoalGenerator(BaseGoalGenerator):
         
         
         self.ats.registerCallback(self.topics_callback)
-        
-        
-        
-        
+
 
         rospy.loginfo("GoalGenerator initialized successfully.")
 
@@ -450,11 +447,10 @@ class GoalGenerator(BaseGoalGenerator):
             ):
                 # Transform image data and prepare target context tensor
                 transformed_context_queue = transform_images(list(self.context_queue), transform=self.transform)
-                
-                
 
                 target_context_queue = np.array(self.target_context_queue)
-                
+
+
                 prev_actions = None
 
                 if self.use_action_context:
@@ -467,16 +463,16 @@ class GoalGenerator(BaseGoalGenerator):
                     prev_actions = np.concatenate([prev_waypoints[1:], prev_yaw[:, None]], axis=-1)
                     prev_actions = from_numpy(prev_actions)
 
-
-                
                 target_context_mask = np.sum(target_context_queue == np.zeros((2,)), axis=1) == 2
                 
                 if np.all(target_context_mask):
+                    ## No target info at context at all
                     transformed_vision_memory_img = transform_images([self.vision_memory_queue[0]], transform=self.transform)
                     normalized_lin_mem = normalize_data(data=self.linear_memory_queue[0], stats={'min': -self.max_depth / 1000, 'max': self.max_depth / 1000}, norm_type="maxmin" )
                     self.memory_image_pub.publish(self.vision_memory_msgs[0])
                     rospy.loginfo("Using memory!")
                 else:
+                    ## Some of the context conatin the target info
                     transformed_vision_memory_img = transform_images([self.vision_memory_queue[-1]], transform=self.transform)
                     normalized_lin_mem = normalize_data(data=self.linear_memory_queue[-1], stats={'min': -self.max_depth / 1000, 'max': self.max_depth / 1000}, norm_type="maxmin" )
                     self.memory_image_pub.publish(self.vision_memory_msgs[-1])
@@ -635,7 +631,7 @@ class GoalGenerator(BaseGoalGenerator):
                 self.linear_memory_queue.append(self.latest_observed_obj_det)
                 
                 self.vision_memory_msgs.append(image_msg)
-                
+
 
 
             self.target_context_queue.append(self.latest_obj_det)
