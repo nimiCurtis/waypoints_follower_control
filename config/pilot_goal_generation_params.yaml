@@ -15,10 +15,10 @@ model:
   # model_name: cnn_mlp_bsz128_c3_ac2_gcFalse_gcp0.3_ph5_tceTrue_ntmaxmin_2024-11-12_16-33-56
 
   # ViNT
-  model_name: vint_bsz128_c3_ac2_gcTrue_gcp0.3_ph5_tceTrue_ntmaxmin_2024-11-12_17-48-53
+  # model_name: vint_bsz128_c3_ac2_gcTrue_gcp0.3_ph5_tceTrue_ntmaxmin_2024-11-12_17-48-53
 
   # Pidiff
-  # TODO:
+
   model_name: pidiff_bsz128_c3_ac2_gcTrue_gcp0.3_ph16_tceTrue_ntmaxmin_2024-11-12_13-45-54
 
   # finetune
@@ -30,6 +30,15 @@ model:
                 # of the data collected to train the policy
   pub_rate: 5
   inference_rate: 5
+
+  # # Vint 
+  # pub_rate: 5
+  # inference_rate: 10
+
+  # # SimpleBC 
+  # pub_rate: 5
+  # inference_rate: 15
+
   wpt_i: 4
   use_subgoal: True
 
