@@ -226,14 +226,8 @@ class BaseGoalGenerator:
         self.latest_observed_obj_det = None
         
         self.smooth_goal_filter = MovingWindowFilter(window_size=self.params["sensor_moving_window_size"], data_dim=3)
-        self.smoothen_time = self.params["smoothen_time"]
-        
 
-
-        
-        
         # Subgoal generator
-        
         self.use_subgoal = self.params["use_subgoal"]
 
         self.transformed_pose = PoseStamped()
@@ -312,12 +306,6 @@ class BaseGoalGenerator:
     def topics_callback(self, *args):
         """
         Abstract method to be implemented by derived classes for handling topic callbacks.
-        """
-        raise NotImplementedError("Derived classes must implement this method.")
-    
-    def filter_pose(self, *args):
-        """
-        Abstract method to be implemented by derived classes
         """
         raise NotImplementedError("Derived classes must implement this method.")
 
@@ -429,8 +417,6 @@ class GoalGenerator(BaseGoalGenerator):
 
         # Update the corresponding variables in your class
         self.frame_rate = config.frame_rate
-        # self.pub_rate = config.pub_rate
-        # self.inference_rate = config.inference_rate
         self.wpt_i = min(config.wpt_i, self.model.action_horizon-1)
         self.smoothen_time = config.smoothen_time
 
@@ -477,16 +463,12 @@ class GoalGenerator(BaseGoalGenerator):
                     img_mem = self.context_queue[-1]
                     lin_mem = target_context_queue[-1]
                     img_msg = self.latest_image_msg
+
                 transformed_vision_memory_img = transform_images([img_mem], transform=self.transform)
                 normalized_lin_mem = normalize_data(data=lin_mem, stats={'min': -self.max_depth / 1000, 'max': self.max_depth / 1000}, norm_type="maxmin" )
                 self.memory_image_pub.publish(img_msg)
-                # else:
-                #     ## Some of the context conatin the target info
-                #     transformed_vision_memory_img = transform_images([self.vision_memory_queue[-1]], transform=self.transform)
-                #     normalized_lin_mem = normalize_data(data=self.linear_memory_queue[-1], stats={'min': -self.max_depth / 1000, 'max': self.max_depth / 1000}, norm_type="maxmin" )
-                #     self.memory_image_pub.publish(self.vision_memory_msgs[-1])
 
-                # TODO:transform memory vision
+
                 
                 np_curr_rel_pos = np.zeros((target_context_queue.shape[0], self.target_dim))
                 np_curr_rel_pos[~target_context_mask] = normalize_data(data=target_context_queue[~target_context_mask], stats={'min': -self.max_depth / 1000, 'max': self.max_depth / 1000}, norm_type="maxmin" )
@@ -559,7 +541,10 @@ class GoalGenerator(BaseGoalGenerator):
                                             path_frame_id=self.odom_frame,
                                             seq=self.seq, transform=self.ros_transform)
                     
-                    self.transformed_pose: PoseStamped = self.path.poses[self.wpt_i]
+                    transformed_pose : PoseStamped = self.path.poses[self.wpt_i]
+                    self.transformed_pose: PoseStamped = transformed_pose
+                    self.smooth_goal_filter.calculate_average(np.array(pos_yaw_from_pose(pose_msg=transformed_pose.pose)))
+                    
                     # Calculate error of current relative target position from the desired relative target position
                     if self.observed_target:
                         d_cos_sin_target_in_robot_base = xy_to_d_cos_sin(np.array(self.latest_obj_det))
@@ -568,14 +553,19 @@ class GoalGenerator(BaseGoalGenerator):
                         
                         dgoal = d_cos_sin_target_in_robot_base[0] - d_cos_sin_target_in_robot_base_desired[0]
                         
-                        rospy.loginfo(f"dgoal: {abs(dgoal)}")
                         desired_goal_pos_in_robot_base = np.array([dgoal*d_cos_sin_target_in_robot_base[1],dgoal*d_cos_sin_target_in_robot_base[2]])
+                        
                         desired_goal_yaw_in_robot_base = np.arctan2(d_cos_sin_target_in_robot_base[2],d_cos_sin_target_in_robot_base[1])
 
-                        desired_goal_quat_in_robot_base = quaternion_from_euler(0,0,desired_goal_yaw_in_robot_base)
+                        
+                        x_d, y_d, yaw_d = self.smooth_goal_filter.calculate_average(np.array([desired_goal_pos_in_robot_base[0],
+                                                                                            desired_goal_pos_in_robot_base[1],
+                                                                                            desired_goal_yaw_in_robot_base]))
                         
                         
-                        desired_pose_stamped = create_pose_stamped(desired_goal_pos_in_robot_base, desired_goal_quat_in_robot_base, self.base_frame, self.seq, current_time)
+                        desired_goal_quat_in_robot_base = quaternion_from_euler(0,0,yaw_d)
+
+                        desired_pose_stamped = create_pose_stamped([x_d, y_d], desired_goal_quat_in_robot_base, self.base_frame, self.seq, current_time)
 
                         # Transform the pose to the odom frame
                         desired_pose_stamped_in_odom: PoseStamped = do_transform_pose_stamped(pose_stamped=desired_pose_stamped,
@@ -761,269 +751,6 @@ class GoalGenerator(BaseGoalGenerator):
         # Publish the marker
         self.subgoal_marker_pub.publish(marker)
 
-## TODO: update the kalman filter
-class GoalGeneratorKalman(BaseGoalGenerator):
-    def __init__(self):
-        """
-        Initializes the GoalGenerator class, setting up subscribers and synchronizers for image and object detection topics.
-        """
-        super().__init__()
-        
-        params = self.load_kalman_parameters()
-        
-        # Subscribers and synchronizer for image and object detection topics
-        self.image_sub = message_filters.Subscriber(self.params["image_topic"], Image)
-        self.obj_det_sub = message_filters.Subscriber(self.params["obj_det_topic"], ObjectsStamped)
-        self.odom_sub = message_filters.Subscriber(self.params["odom_topic"], Odometry)
-        
-        
-        self.goal_pub_filtered = rospy.Publisher('/goal_pose_filtered', PoseStamped, queue_size=10)
-        self.goal_pub_sensor = rospy.Publisher('/goal_pose_model', PoseStamped, queue_size=10)
-        self.goal_pub_prediction = rospy.Publisher('/goal_pose_analytic', PoseStamped, queue_size=10)
-        
-        self.sync_topics_list = [self.image_sub]
-
-        if self.target_context_enable:
-            self.sync_topics_list.append(self.obj_det_sub)
-
-        if self.action_context_size>0:
-            self.sync_topics_list.append(self.odom_sub)
-
-        self.ats = message_filters.ApproximateTimeSynchronizer(
-            fs=self.sync_topics_list,
-            queue_size=10,
-            slop=0.1)
-
-        ## kalman filtering 
-        # Initialize the filter parameters
-        self.k_B = params["kalman_k_B"]
-        self.sensor_variance = np.array([float(v) for v in params["kalman_sensor_variance"]])
-        self.moving_window_size = params["kalman_moving_window_size"]
-        self.alpha = params["kalman_alpha"]
-        self.error_threhsold = params['kalman_error_threshold']
-
-        self.goal_estimator = GoalPositionEstimator(sensor_variance=self.sensor_variance,
-                                                    moving_window_filter_size=self.moving_window_size,
-                                                    k=self.k_B)
-
-        self.estimated_goal = np.zeros(3)
-        self.desired_pose_in_odom = np.zeros(3)
-        ## Register callback
-        self.ats.registerCallback(self.topics_callback)
-
-        rospy.loginfo("GoalGenerator initialized successfully.")
-
-    def load_kalman_parameters(self):
-        
-        params = {
-            # New parameters from the 'filter' section
-            
-            "kalman_k_B": rospy.get_param(self.node_name + "/filter/kalman/k_B", default=0.1),
-            "kalman_sensor_variance": rospy.get_param(self.node_name + "/filter/kalman/sensor_variance", default=[1e-2, 1e-2, 1e-2]),
-            "kalman_moving_window_size": rospy.get_param(self.node_name + "/filter/kalman/moving_window_size", default=15),
-            "kalman_alpha": rospy.get_param(self.node_name + "/filter/kalman/alpha", default=150),
-            "kalman_error_threshold": rospy.get_param(self.node_name + "/filter/kalman/error_threshold", default=0.6),
-        }
-
-        # Print the newly added filter parameters
-        rospy.loginfo("* Filter Parameters:")
-        rospy.loginfo(f"  * kalman_k_B: {params['kalman_k_B']}")
-        rospy.loginfo(f"  * kalman_sensor_variance: {params['kalman_sensor_variance']}")
-        rospy.loginfo(f"  * kalman_moving_window_size: {params['kalman_moving_window_size']}")
-        rospy.loginfo(f"  * kalman_alpha: {params['kalman_alpha']}")
-        rospy.loginfo(f"  * kalman_error_threshold: {params['kalman_error_threshold']}")
-
-        rospy.loginfo("**************************")
-        
-        return params
-
-    def topics_callback(self, image_msg: Image, obj_det_msg: ObjectsStamped, odom_msg: Odometry = None):
-        """
-        Callback function for synchronized image and object detection messages. Processes data and performs inference.
-
-        Args:
-            image_msg (Image): Image message from the subscribed topic.
-            obj_det_msg (ObjectsStamped): Object detection message from the subscribed topic.
-        """
-        current_time = image_msg.header.stamp
-        self.observed_target = self._is_target_observed(obj_det_msg)
-        model_prediction_in_odom = None
-        
-        # Collect image data at the specified frame rate
-        dt_collect = (current_time - self.last_collect_time).to_sec()
-        
-        self.latest_obj_det = list(obj_det_msg.objects[0].position)[:2] if self.observed_target else [0, 0]
-        obj_det_variance = np.array(obj_det_msg.objects[0].position_covariance) if self.observed_target else np.zeros(6)
-
-        if dt_collect >= 1.0 / self.frame_rate:
-            self.last_collect_time = current_time
-            self.latest_image = msg_to_pil(image_msg, max_depth=self.max_depth)
-            self.context_queue.append(self.latest_image)
-
-            self.target_context_queue.append(self.latest_obj_det)
-            
-            if odom_msg is not None:
-                self.latest_odom_pos = pos_yaw_from_odom(odom_msg=odom_msg)
-                self.action_context_queue.append(self.latest_odom_pos)
-
-        # Perform inference at the specified inference rate
-        dt_inference = (current_time - self.last_inference_time).to_sec()
-        if (len(self.context_queue) >= self.context_queue.maxlen) and (len(self.target_context_queue) >= self.target_context_queue.maxlen) and  (len(self.action_context_queue) >= self.action_context_queue.maxlen) and (dt_inference >= 1.0 / self.inference_rate):
-            self.last_inference_time = current_time
-
-            # Transform image data and prepare target context tensor
-            transformed_context_queue = transform_images(list(self.context_queue), transform=self.transform)
-            target_context_queue = np.array(self.target_context_queue)
-            
-            prev_actions = None
-            # action_context_queue = np.array(list(self.action_context_queue))
-            if odom_msg is not None:
-                action_context_queue = np.array(self.action_context_queue)
-                
-                prev_positions = action_context_queue[:,:2]
-                prev_yaw = action_context_queue[:,2]
-                prev_waypoints = to_local_coords(prev_positions, prev_positions[0], prev_yaw[0])
-                prev_yaw = prev_yaw[1:] - prev_yaw[0]  # yaw is relative to the initial yaw
-                prev_actions = np.concatenate([prev_waypoints[1:], prev_yaw[:, None]], axis=-1)
-                prev_actions = from_numpy(prev_actions)
-
-            target_context_mask = np.sum(target_context_queue == np.zeros((2,)), axis=1) == 2
-            np_curr_rel_pos = np.zeros((target_context_queue.shape[0], self.target_dim))
-            if self.target_dim == 3:
-                np_curr_rel_pos[~target_context_mask] = xy_to_d_cos_sin(target_context_queue[~target_context_mask])
-                np_curr_rel_pos[~target_context_mask, 0] = normalize_data(data=np_curr_rel_pos[~target_context_mask, 0], stats={'min': -self.max_depth / 1000, 'max': self.max_depth / 1000})
-            elif self.target_dim == 2:
-                np_curr_rel_pos[~target_context_mask] = normalize_data(data=target_context_queue[~target_context_mask], stats={'min': -self.max_depth / 1000, 'max': self.max_depth / 1000})
-            
-            target_context_queue_tensor = from_numpy(np_curr_rel_pos)
-
-            # Prepare goal condition tensor
-            if self.target_dim == 3:
-                    goal_rel_pos_to_target = xy_to_d_cos_sin(self.goal_to_target)
-                    goal_rel_pos_to_target[0] = normalize_data(data=goal_rel_pos_to_target[0], stats={'min': -self.max_depth / 1000, 'max': self.max_depth / 1000})
-            elif self.target_dim == 2:
-                goal_rel_pos_to_target = normalize_data(data=self.goal_to_target, stats={'min': -self.max_depth / 1000, 'max': self.max_depth / 1000})
-
-            goal_to_target_tensor = from_numpy(goal_rel_pos_to_target)
-
-            # Perform inference to get waypoints
-            t = tic()
-            waypoints = self.model(transformed_context_queue,
-                                target_context_queue_tensor,
-                                goal_to_target_tensor,
-                                prev_actions)
-            dt_infer = toc(t)
-            # rospy.loginfo(f"Inferencing time: {dt_infer:.4f} seconds.")
-            self.inference_times.append(dt_infer)
-            avg_inference_time = np.mean(self.inference_times)
-            rospy.loginfo_throttle(10, f"Average inference time (last {len(self.inference_times)}): {avg_inference_time:.4f} seconds.")
-
-            dx_m, dy_m, hx_m, hy_m = waypoints[self.wpt_i]
-            yaw_m = clip_angles(np.arctan2(hy_m, hx_m))
-            
-            dx_m, dy_m, yaw_m = self.smooth_goal_filter.calculate_average(np.array([dx_m,dy_m,yaw_m]))
-            yaw_m = clip_angles(yaw_m)
-
-            model_pose_stamped = create_pose_stamped(dx_m, dy_m, yaw_m, self.base_frame, self.seq, current_time)
-            
-            # smooth
-            
-            self.prev_filtered_action = np.array([dx_m,dy_m,yaw_m])
-
-            try:
-                # Transform the pose to the odom frame
-                self.transformed_pose: PoseStamped = self.tf_buffer.transform(object_stamped=model_pose_stamped,
-                                                                target_frame=self.odom_frame,
-                                                                timeout=rospy.Duration(0.2),
-                                                                )
-                model_prediction_in_odom = pos_yaw_from_pose(self.transformed_pose.pose)
-                
-            except (LookupException, ConnectivityException, ExtrapolationException) as e:
-                rospy.logwarn(f"Failed to transform pose: {str(e)}")
-                self.transformed_pose = None  # Ensure the transformed_pose is not used if transformation fails
-
-        # Calculate error of current relative target position from the desired relative target position
-        d_cos_sin_target_in_robot_base = xy_to_d_cos_sin(np.array(self.latest_obj_det))
-        d_cos_sin_target_in_robot_base_desired = xy_to_d_cos_sin(self.goal_to_target)
-        
-        dgoal = d_cos_sin_target_in_robot_base[0] - d_cos_sin_target_in_robot_base_desired[0]
-        
-        desired_goal_pos_in_robot_base = np.array([dgoal*d_cos_sin_target_in_robot_base[1],dgoal*d_cos_sin_target_in_robot_base[2]])
-        desired_goal_yaw_in_robot_base = np.arctan2(d_cos_sin_target_in_robot_base[2],d_cos_sin_target_in_robot_base[1])
-
-        desired_pose_stamped = create_pose_stamped(desired_goal_pos_in_robot_base[0], desired_goal_pos_in_robot_base[1], desired_goal_yaw_in_robot_base, self.base_frame, self.seq, current_time)
-
-        try:
-            # Transform the pose to the odom frame
-            desired_pose_stamped_in_odom: PoseStamped = self.tf_buffer.transform(object_stamped=desired_pose_stamped,
-                                                            target_frame=self.odom_frame,
-                                                            timeout=rospy.Duration(0.2),
-                                                            )
-
-        except (LookupException, ConnectivityException, ExtrapolationException) as e:
-                rospy.logwarn(f"Failed to transform pose: {str(e)}")
-                desired_pose_stamped_in_odom = None  # Ensure the transformed_pose is not used if transformation fails
-
-        desired_pose_in_odom = np.array(pos_yaw_from_pose(pose_msg=desired_pose_stamped_in_odom.pose))
-
-        if self.observed_target:
-            e = desired_pose_in_odom - self.estimated_goal
-            # e[2] = clip_angle(e[2])
-            rospy.loginfo(f"e: [{e[0]:.4f}, {e[1]:.4f}, {e[2]:.4f}]")
-
-            current_pose_in_odom = np.array(pos_yaw_from_odom(odom_msg=odom_msg))
-
-            e2s = np.abs(desired_pose_in_odom - current_pose_in_odom)
-            # e2s[2] = clip_angle(e2s[2])
-            rospy.loginfo(f"e2: [{e2s[0]:.4f}, {e2s[1]:.4f}, {e2s[2]:.4f}]")
-
-            e2 = np.linalg.norm(e2s)
-            rospy.loginfo(f"e2 norm: {e2:.4f}")
-
-            alpha = self.alpha
-            v = np.round(np.exp(-alpha * (e2 - self.error_threhsold )),4)
-            prediction_mag = (1/(v + 1e-6))  # need to increase prediction covariance when e2 is big, decrease when small 
-            correction_mag =  v # need to increase prediction covariance when e2 is small, decrease when big
-            nprediction_mag = prediction_mag / (correction_mag + prediction_mag)
-            ncorrection_mag = correction_mag / (correction_mag + prediction_mag)
-        else:
-            e = np.zeros(3)
-            nprediction_mag = 1.
-            ncorrection_mag = 1e-20
-
-        rospy.loginfo(f"Prediction cov magnitude: {nprediction_mag}")
-        rospy.loginfo(f"Correction cov magnitude: {ncorrection_mag}")
-
-        self.goal_estimator.update(state_error=e,
-                                sensor_prediction=model_prediction_in_odom,
-                                prediction_variance=obj_det_variance,
-                                prediction_mag=nprediction_mag,
-                                correction_mag=ncorrection_mag)
-
-        self.estimated_goal = self.goal_estimator.estimated_goal
-        
-        dx, dy, yaw = self.estimated_goal[0], self.estimated_goal[1], clip_angles(self.estimated_goal[2])
-        
-        # Create and transform pose
-        pose_stamped = create_pose_stamped(dx, dy, yaw, self.odom_frame, self.seq, current_time)
-        self.seq += 1
-        rospy.loginfo(f"Planner running. Goal generated ([dx, dy, yaw]): [{dx:.4f}, {dy:.4f}, {yaw:.4f}]")
-
-        # rospy.loginfo_throttle(1, f"Planner running. Goal generated ([dx, dy, yaw]): [{dx:.4f}, {dy:.4f}, {yaw:.4f}]")
-
-        # Publish the transformed pose
-        if pose_stamped is not None:
-            dt_pub = (current_time - self.last_msg_time).to_sec()
-            # self.transformed_pose_smoothed = self.filter_pose(self.transformed_pose)
-            self.goal_pub_filtered.publish(pose_stamped)
-            # rospy.loginfo(f"Publishing goal after {dt_pub} seconds.")
-            self.last_msg_time = current_time
-
-        if self.transformed_pose is not None:
-            self.goal_pub_sensor.publish(self.transformed_pose)
-
-        if desired_pose_stamped_in_odom is not None:
-            self.goal_pub_prediction.publish(desired_pose_stamped_in_odom)
 
 if __name__ == '__main__':
     # Start node
