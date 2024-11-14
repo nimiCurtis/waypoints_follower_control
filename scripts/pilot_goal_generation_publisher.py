@@ -447,7 +447,6 @@ class GoalGenerator(BaseGoalGenerator):
             ):
                 # Transform image data and prepare target context tensor
                 transformed_context_queue = transform_images(list(self.context_queue), transform=self.transform)
-
                 target_context_queue = np.array(self.target_context_queue)
 
 
@@ -539,39 +538,45 @@ class GoalGenerator(BaseGoalGenerator):
 
                 try:
                     
-                    # Calculate error of current relative target position from the desired relative target position
-                    
-                    if self.observed_target:
-                        d_cos_sin_target_in_robot_base = xy_to_d_cos_sin(np.array(self.latest_obj_det))
-                        d_cos_sin_target_in_robot_base_desired = xy_to_d_cos_sin(self.goal_to_target)
-                    
-                    dgoal = d_cos_sin_target_in_robot_base[0] - d_cos_sin_target_in_robot_base_desired[0]
-                    
-                    desired_goal_pos_in_robot_base = np.array([dgoal*d_cos_sin_target_in_robot_base[1],dgoal*d_cos_sin_target_in_robot_base[2]])
-                    desired_goal_yaw_in_robot_base = np.arctan2(d_cos_sin_target_in_robot_base[2],d_cos_sin_target_in_robot_base[1])
-
-                    desired_pose_stamped = create_pose_stamped(desired_goal_pos_in_robot_base[0], desired_goal_pos_in_robot_base[1], desired_goal_yaw_in_robot_base, self.base_frame, self.seq, current_time)
-
-                    # Transform the pose to the odom frame
-                    desired_pose_stamped_in_odom: PoseStamped = self.tf_buffer.transform(object_stamped=desired_pose_stamped,
-                                                                    target_frame=self.odom_frame,
-                                                                    timeout=rospy.Duration(0.2),
-                                                                    )
-                    
-                    
-                    #############
-                    
-                    
                     self.ros_transform = self.tf_buffer.lookup_transform(target_frame=self.odom_frame,
                                                                     source_frame=self.base_frame,
                                                                     time = rospy.Time(0),
                                                                     timeout=rospy.Duration(0.2))
+                    
+                    
                     # Create and publish the updated path
                     self.path = create_path_msg(zip(smoothed_translations, smoothed_quaternions, timestamps), waypoints_frame = self.base_frame,
                                             path_frame_id=self.odom_frame,
                                             seq=self.seq, transform=self.ros_transform)
-
+                    
                     self.transformed_pose: PoseStamped = self.path.poses[self.wpt_i]
+                    # Calculate error of current relative target position from the desired relative target position
+                    if self.observed_target:
+                        d_cos_sin_target_in_robot_base = xy_to_d_cos_sin(np.array(self.latest_obj_det))
+                        d_cos_sin_target_in_robot_base_desired = xy_to_d_cos_sin(self.goal_to_target)
+
+                        
+                        dgoal = d_cos_sin_target_in_robot_base[0] - d_cos_sin_target_in_robot_base_desired[0]
+                        
+                        rospy.loginfo(f"dgoal: {abs(dgoal)}")
+                        desired_goal_pos_in_robot_base = np.array([dgoal*d_cos_sin_target_in_robot_base[1],dgoal*d_cos_sin_target_in_robot_base[2]])
+                        desired_goal_yaw_in_robot_base = np.arctan2(d_cos_sin_target_in_robot_base[2],d_cos_sin_target_in_robot_base[1])
+
+                        desired_goal_quat_in_robot_base = quaternion_from_euler(0,0,desired_goal_yaw_in_robot_base)
+                        
+                        
+                        desired_pose_stamped = create_pose_stamped(desired_goal_pos_in_robot_base, desired_goal_quat_in_robot_base, self.base_frame, self.seq, current_time)
+
+                        # Transform the pose to the odom frame
+                        desired_pose_stamped_in_odom: PoseStamped = do_transform_pose_stamped(pose_stamped=desired_pose_stamped,
+                                                                        transform=self.ros_transform)
+
+                        ### TODO: dgoal logic
+                        
+                        if abs(dgoal)<=0.8:
+                            self.transformed_pose: PoseStamped = desired_pose_stamped_in_odom
+
+                    
                     self.transformed_pose.header.seq = self.seq
                     
                     self.seq+=1
