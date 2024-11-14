@@ -215,8 +215,8 @@ class BaseGoalGenerator:
         self.context_queue = deque(maxlen=self.context_size + 1)
         self.target_context_queue = deque(maxlen=self.context_size + 1)
         self.action_context_queue = deque(maxlen=data_cfg.action_context_size + 1)
-        self.vision_memory_queue = deque(maxlen=max(int(self.frame_rate/2),1))
-        self.vision_memory_msgs = deque(maxlen=max(int(self.frame_rate/2),1))
+        self.vision_memory_queue = deque(maxlen=max(int(self.frame_rate),1))
+        self.vision_memory_msgs = deque(maxlen=max(int(self.frame_rate),1))
 
         self.linear_memory_queue = deque(maxlen=max(int(self.frame_rate/2),1))
         
@@ -391,7 +391,7 @@ class GoalGenerator(BaseGoalGenerator):
         self.start_time = rospy.Time.now()
         self.last_service_call_time = rospy.Time.now()
         self.last_goal_reached = rospy.Time.now()
-        
+        self.latest_image_msg = Image()
         self.subgoal_gen = SubgoalsGen(threshold=0.5)
         self.subgoal_to_target = None
         
@@ -464,17 +464,27 @@ class GoalGenerator(BaseGoalGenerator):
 
                 target_context_mask = np.sum(target_context_queue == np.zeros((2,)), axis=1) == 2
                 
-                if np.all(target_context_mask):
+                if np.all(target_context_mask) and len(self.vision_memory_queue)>0:
                     ## No target info at context at all
-                    transformed_vision_memory_img = transform_images([self.vision_memory_queue[0]], transform=self.transform)
-                    normalized_lin_mem = normalize_data(data=self.linear_memory_queue[0], stats={'min': -self.max_depth / 1000, 'max': self.max_depth / 1000}, norm_type="maxmin" )
-                    self.memory_image_pub.publish(self.vision_memory_msgs[0])
+                    # and there is a memory stored:
+                    img_mem = self.vision_memory_queue[0]
+                    lin_mem = self.linear_memory_queue[0]
+                    img_msg = self.vision_memory_msgs[0]
+                    # self.memory_image_pub.publish(self.vision_memory_msgs[0])
                     rospy.loginfo("Using memory!")
                 else:
-                    ## Some of the context conatin the target info
-                    transformed_vision_memory_img = transform_images([self.vision_memory_queue[-1]], transform=self.transform)
-                    normalized_lin_mem = normalize_data(data=self.linear_memory_queue[-1], stats={'min': -self.max_depth / 1000, 'max': self.max_depth / 1000}, norm_type="maxmin" )
-                    self.memory_image_pub.publish(self.vision_memory_msgs[-1])
+                    ## When starting and target at frame
+                    img_mem = self.context_queue[-1]
+                    lin_mem = target_context_queue[-1]
+                    img_msg = self.latest_image_msg
+                transformed_vision_memory_img = transform_images([img_mem], transform=self.transform)
+                normalized_lin_mem = normalize_data(data=lin_mem, stats={'min': -self.max_depth / 1000, 'max': self.max_depth / 1000}, norm_type="maxmin" )
+                self.memory_image_pub.publish(img_msg)
+                # else:
+                #     ## Some of the context conatin the target info
+                #     transformed_vision_memory_img = transform_images([self.vision_memory_queue[-1]], transform=self.transform)
+                #     normalized_lin_mem = normalize_data(data=self.linear_memory_queue[-1], stats={'min': -self.max_depth / 1000, 'max': self.max_depth / 1000}, norm_type="maxmin" )
+                #     self.memory_image_pub.publish(self.vision_memory_msgs[-1])
 
                 # TODO:transform memory vision
                 
@@ -645,6 +655,7 @@ class GoalGenerator(BaseGoalGenerator):
         dt_collect = (current_time - self.last_collect_time).to_sec()
         if dt_collect >= 1.0 / self.frame_rate:
             self.last_collect_time = current_time
+            self.latest_image_msg = image_msg
             self.latest_image = msg_to_pil(image_msg, max_depth=self.max_depth)
             self.context_queue.append(self.latest_image)
 
