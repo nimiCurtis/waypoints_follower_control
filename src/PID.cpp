@@ -154,7 +154,7 @@ namespace wfc {
         double dyaw = (*goal_xyyaw_in_odom_)[2] - curr_xyyaw_in_odom[2];
         dyaw = clip_angle(dyaw);
         // ROS_INFO("dyaw: %f " , dyaw);
-        if (std::abs(dyaw)<=0.01){
+        if (std::abs(dyaw)<=0.005){
                 dyaw = 0.0;
                 ROS_INFO("Clip yaw command to 0 !!!");
         }
