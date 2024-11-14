@@ -548,6 +548,30 @@ class GoalGenerator(BaseGoalGenerator):
                 smoothed_translations, smoothed_quaternions = self.realtime_traj.interpolate_traj(timestamps)
 
                 try:
+                    
+                    # Calculate error of current relative target position from the desired relative target position
+                    
+                    if self.observed_target:
+                        d_cos_sin_target_in_robot_base = xy_to_d_cos_sin(np.array(self.latest_obj_det))
+                        d_cos_sin_target_in_robot_base_desired = xy_to_d_cos_sin(self.goal_to_target)
+                    
+                    dgoal = d_cos_sin_target_in_robot_base[0] - d_cos_sin_target_in_robot_base_desired[0]
+                    
+                    desired_goal_pos_in_robot_base = np.array([dgoal*d_cos_sin_target_in_robot_base[1],dgoal*d_cos_sin_target_in_robot_base[2]])
+                    desired_goal_yaw_in_robot_base = np.arctan2(d_cos_sin_target_in_robot_base[2],d_cos_sin_target_in_robot_base[1])
+
+                    desired_pose_stamped = create_pose_stamped(desired_goal_pos_in_robot_base[0], desired_goal_pos_in_robot_base[1], desired_goal_yaw_in_robot_base, self.base_frame, self.seq, current_time)
+
+                    # Transform the pose to the odom frame
+                    desired_pose_stamped_in_odom: PoseStamped = self.tf_buffer.transform(object_stamped=desired_pose_stamped,
+                                                                    target_frame=self.odom_frame,
+                                                                    timeout=rospy.Duration(0.2),
+                                                                    )
+                    
+                    
+                    #############
+                    
+                    
                     self.ros_transform = self.tf_buffer.lookup_transform(target_frame=self.odom_frame,
                                                                     source_frame=self.base_frame,
                                                                     time = rospy.Time(0),
@@ -914,7 +938,6 @@ class GoalGeneratorKalman(BaseGoalGenerator):
                 self.transformed_pose = None  # Ensure the transformed_pose is not used if transformation fails
 
         # Calculate error of current relative target position from the desired relative target position
-        
         d_cos_sin_target_in_robot_base = xy_to_d_cos_sin(np.array(self.latest_obj_det))
         d_cos_sin_target_in_robot_base_desired = xy_to_d_cos_sin(self.goal_to_target)
         
@@ -971,7 +994,7 @@ class GoalGeneratorKalman(BaseGoalGenerator):
                                 prediction_variance=obj_det_variance,
                                 prediction_mag=nprediction_mag,
                                 correction_mag=ncorrection_mag)
-        
+
         self.estimated_goal = self.goal_estimator.estimated_goal
         
         dx, dy, yaw = self.estimated_goal[0], self.estimated_goal[1], clip_angles(self.estimated_goal[2])
