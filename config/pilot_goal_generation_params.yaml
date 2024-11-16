@@ -24,9 +24,9 @@ model:
   # finetune
   # model_name: pidiff_bsz128_c3_ac2_gcTrue_gcp0.3_ph16_tceTrue_ntmaxmin_2024-11-12_13-45-54_fintuned_2024-11-13_10-45-19
 
-  model_version: latest # best_model | latest | <epoch_number> (int)
+  model_version: best_model # best_model | latest | <epoch_number> (int)
 
-  frame_rate: 10 # NOTE: please pay atteniton that this value is similar to the sampling rate
+  frame_rate: 12 # NOTE: please pay atteniton that this value is similar to the sampling rate
                 # of the data collected to train the policy
   pub_rate: 5
   inference_rate: 5
