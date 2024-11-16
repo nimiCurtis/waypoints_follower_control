@@ -2,9 +2,9 @@ robot: go2 # turtlebot | go2 | nimrod
 
 frames:
   odom_frame: odom
-  # base_frame: base_footprint
+  base_frame: base_footprint
 
-  base_frame: base_link
+  # base_frame: base_link
   # base_frame: zedm_left_camera_frame
 
 model: 
@@ -19,17 +19,17 @@ model:
 
   # Pidiff
 
-  # model_name: pidiff_bsz128_c3_ac2_gcTrue_gcp0.3_ph16_tceTrue_ntmaxmin_2024-11-12_13-45-54
+  model_name: pidiff_bsz256_c3_ac2_gcTrue_gcp0.3_ph16_tceTrue_ntmaxmin_2024-11-12_19-05-32
 
   # finetune
-  model_name: pidiff_bsz128_c3_ac2_gcTrue_gcp0.3_ph16_tceTrue_ntmaxmin_2024-11-12_13-45-54_fintuned_2024-11-13_10-45-19
+  # model_name: pidiff_bsz128_c3_ac2_gcTrue_gcp0.3_ph16_tceTrue_ntmaxmin_2024-11-12_13-45-54_fintuned_2024-11-13_10-45-19
 
   model_version: latest # best_model | latest | <epoch_number> (int)
 
-  frame_rate: 12 # NOTE: please pay atteniton that this value is similar to the sampling rate
+  frame_rate: 10 # NOTE: please pay atteniton that this value is similar to the sampling rate
                 # of the data collected to train the policy
-  pub_rate: 4
-  inference_rate: 4
+  pub_rate: 5
+  inference_rate: 7
 
   # # Vint 
   # pub_rate: 5

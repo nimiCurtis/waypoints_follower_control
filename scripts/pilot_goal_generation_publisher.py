@@ -380,7 +380,7 @@ class GoalGenerator(BaseGoalGenerator):
         self.last_service_call_time = rospy.Time.now()
         self.last_goal_reached = rospy.Time.now()
         self.latest_image_msg = Image()
-        self.subgoal_gen = SubgoalsGen(threshold=0.5)
+        self.subgoal_gen = SubgoalsGen(threshold=1.5)
         self.subgoal_to_target = None
         
         
@@ -543,7 +543,7 @@ class GoalGenerator(BaseGoalGenerator):
                     
                     transformed_pose : PoseStamped = self.path.poses[self.wpt_i]
                     self.transformed_pose: PoseStamped = transformed_pose
-                    self.smooth_goal_filter.calculate_average(np.array(pos_yaw_from_pose(pose_msg=transformed_pose.pose)))
+                    # self.smooth_goal_filter.calculate_average(np.array(pos_yaw_from_pose(pose_msg=transformed_pose.pose)))
                     
                     # Calculate error of current relative target position from the desired relative target position
                     if self.observed_target:
