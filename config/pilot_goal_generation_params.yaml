@@ -19,17 +19,17 @@ model:
 
   # Pidiff
 
-  # model_name: pidiff_bsz128_c3_ac2_gcTrue_gcp0.3_ph16_tceTrue_ntmaxmin_2024-11-12_13-45-54
-
+  model_name: pidiff_bsz128_c1_ac1_gcTrue_gcp0.5_ph16_tceTrue_ntmaxmin_2024-11-16_09-39-09
+  # model_name: pidiff_bsz128_c2_ac1_gcTrue_gcp0.5_ph16_tceTrue_ntmaxmin_2024-11-15_18-56-45
   # finetune
-  model_name: pidiff_bsz128_c3_ac2_gcTrue_gcp0.3_ph16_tceTrue_ntmaxmin_2024-11-12_13-45-54_fintuned_2024-11-13_10-45-19
+  # model_name: pidiff_bsz128_c3_ac2_gcTrue_gcp0.3_ph16_tceTrue_ntmaxmin_2024-11-12_13-45-54_fintuned_2024-11-13_10-45-19
 
   model_version: latest # best_model | latest | <epoch_number> (int)
 
   frame_rate: 12 # NOTE: please pay atteniton that this value is similar to the sampling rate
                 # of the data collected to train the policy
-  pub_rate: 4
-  inference_rate: 4
+  pub_rate: 5
+  inference_rate: 5
 
   # # Vint 
   # pub_rate: 5
