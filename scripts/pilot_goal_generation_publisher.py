@@ -543,7 +543,7 @@ class GoalGenerator(BaseGoalGenerator):
                     
                     transformed_pose : PoseStamped = self.path.poses[self.wpt_i]
                     self.transformed_pose: PoseStamped = transformed_pose
-                    self.smooth_goal_filter.calculate_average(np.array(pos_yaw_from_pose(pose_msg=transformed_pose.pose)))
+                    # self.smooth_goal_filter.calculate_average(np.array(pos_yaw_from_pose(pose_msg=transformed_pose.pose)))
                     
                     # Calculate error of current relative target position from the desired relative target position
                     if self.observed_target:
