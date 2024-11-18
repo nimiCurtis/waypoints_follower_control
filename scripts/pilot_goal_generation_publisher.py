@@ -248,7 +248,7 @@ class BaseGoalGenerator:
 
         params = {
             "robot": rospy.get_param(self.node_name + "/robot", default="go2"),
-            "model_name": rospy.get_param(self.node_name + "/model/model_name", default="pidiff_bsz128_c3_ac2_gcTrue_gcp0.3_ph16_tceTrue_ntmaxmin_dnsddpm_2024-11-11_12-52-08"),
+            "model_name": rospy.get_param(self.node_name + "/model/model_name", default="pidiff_bsz128_c2_ac1_gcTrue_gcp0.25_ah16_ph32_tceTrue_ntmaxmin_2024-11-18_12-25-06_fintuned_2024-11-18_13-30-58"),
             "model_version": str(rospy.get_param(self.node_name + "/model/model_version", default="best_model")),
             "frame_rate": rospy.get_param(self.node_name + "/model/frame_rate", default=7),
             "pub_rate": rospy.get_param(self.node_name + "/model/pub_rate", default=10),
@@ -436,6 +436,24 @@ class GoalGenerator(BaseGoalGenerator):
                 target_context_queue = np.array(self.target_context_queue)
 
 
+                # Prepare goal condition tensor
+                if self.use_subgoal and self.latest_observed_obj_det is not None:
+                    self.subgoal_to_target, radius = self.subgoal_gen.sample_subgoal(self.latest_observed_obj_det,self.goal_to_target)
+                    goal_to_target = self.subgoal_to_target
+                    rospy.loginfo_throttle(3,f"Current target position {self.latest_observed_obj_det} | Subgoal generated: {goal_to_target}")
+                    # Publish the subgoal marker
+                    self.publish_subgoal_marker(self.latest_observed_obj_det, self.base_frame, radius)
+                elif self.use_subgoal and self.subgoal_to_target is not None:
+                    goal_to_target = self.subgoal_to_target
+                    rospy.loginfo("Using last subgoal!")
+                else:
+                    goal_to_target = self.goal_to_target
+                
+                print(goal_to_target)
+                
+                ## TODO: change this
+                goal_rel_pos_to_target = normalize_data(data=goal_to_target, stats={'min': -self.max_depth / 1000, 'max': self.max_depth / 1000}, norm_type="maxmin")
+
                 prev_actions = None
 
                 if self.use_action_context:
@@ -457,7 +475,8 @@ class GoalGenerator(BaseGoalGenerator):
                     lin_mem = self.linear_memory_queue[0]
                     img_msg = self.vision_memory_msgs[0]
                     # self.memory_image_pub.publish(self.vision_memory_msgs[0])
-                    rospy.loginfo("Using memory!")
+                    rospy.loginfo_throttle(0.5, f"Using memory!  ---> goal is {goal_to_target}")
+                    
                 else:
                     ## When starting and target at frame
                     img_mem = self.context_queue[-1]
@@ -476,17 +495,6 @@ class GoalGenerator(BaseGoalGenerator):
 
                 target_context_queue_tensor = from_numpy(np_curr_rel_pos)
 
-                # Prepare goal condition tensor
-                if self.use_subgoal and self.latest_observed_obj_det is not None:
-                    self.subgoal_to_target, radius = self.subgoal_gen.sample_subgoal(self.latest_observed_obj_det,self.goal_to_target)
-                    goal_to_target = self.subgoal_to_target
-                    rospy.loginfo_throttle(3,f"Current target position {self.latest_observed_obj_det} | Subgoal generated: {goal_to_target}")
-                    # Publish the subgoal marker
-                    self.publish_subgoal_marker(self.latest_observed_obj_det, self.base_frame, radius)
-                else:
-                    goal_to_target = self.goal_to_target
-
-                goal_rel_pos_to_target = normalize_data(data=goal_to_target, stats={'min': -self.max_depth / 1000, 'max': self.max_depth / 1000}, norm_type="maxmin")
 
                 normalized_lin_mem_tensor = from_numpy(normalized_lin_mem)
                 goal_to_target_tensor = from_numpy(goal_rel_pos_to_target)
@@ -534,8 +542,7 @@ class GoalGenerator(BaseGoalGenerator):
                                                                     source_frame=self.base_frame,
                                                                     time = rospy.Time(0),
                                                                     timeout=rospy.Duration(0.2))
-                    
-                    
+
                     # Create and publish the updated path
                     self.path = create_path_msg(zip(smoothed_translations, smoothed_quaternions, timestamps), waypoints_frame = self.base_frame,
                                             path_frame_id=self.odom_frame,
@@ -576,7 +583,6 @@ class GoalGenerator(BaseGoalGenerator):
                         if abs(dgoal)<=0.8:
                             self.transformed_pose: PoseStamped = desired_pose_stamped_in_odom
 
-                    
                     self.transformed_pose.header.seq = self.seq
                     
                     self.seq+=1
@@ -585,7 +591,7 @@ class GoalGenerator(BaseGoalGenerator):
                     rospy.logwarn(f"Failed to transform pose: {str(e)}")
                     self.transformed_pose = None  # Ensure the transformed_pose is not used if transformation fails
                     self.path = None
-        
+
         else:
             
             
