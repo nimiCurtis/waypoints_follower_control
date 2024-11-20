@@ -248,7 +248,7 @@ class BaseGoalGenerator:
 
         params = {
             "robot": rospy.get_param(self.node_name + "/robot", default="go2"),
-            "model_name": rospy.get_param(self.node_name + "/model/model_name", default="pidiff_bsz128_c2_ac1_gcTrue_gcp0.75_ah16_ph16_tceTrue_ntmaxmin_2024-11-18_20-30-21"),
+            "model_name": rospy.get_param(self.node_name + "/model/model_name", default="pidiff_bsz128_c2_ac1_gcTrue_gcp0.8_ah16_ph32_tceTrue_ntmaxmin_2024-11-20_11-13-12"),
             "model_version": str(rospy.get_param(self.node_name + "/model/model_version", default="best_model")),
             "frame_rate": rospy.get_param(self.node_name + "/model/frame_rate", default=7),
             "pub_rate": rospy.get_param(self.node_name + "/model/pub_rate", default=10),
@@ -342,11 +342,8 @@ class GoalGenerator(BaseGoalGenerator):
         self.goal_reached_pub = rospy.Publisher('/goal_reach', Bool, queue_size=10)
         self.goal_reached = Bool(False)
 
-        # self.predcition_timer = rospy.Timer(rospy.Duration(1/self.inference_rate),
-        #                                     self.prediction_callback)
-        
-        self.goal_pub_timer = rospy.Timer(rospy.Duration(1/self.pub_rate),
-                                            self.goal_pub_callback)
+        # self.goal_pub_timer = rospy.Timer(rospy.Duration(1/self.pub_rate),
+        #                                     self.goal_pub_callback)
 
         self.srv = Server(ParametersConfig, self.cfg_callback)
         
@@ -422,215 +419,15 @@ class GoalGenerator(BaseGoalGenerator):
 
         return config
     
-    # def prediction_callback(self,event):
-        
-    #     # Perform inference at the specified inference rate
-    #     if not(self.goal_reached.data):
-    #         if (
-    #             (len(self.context_queue) >= self.context_queue.maxlen) 
-    #             and (len(self.target_context_queue) >= self.target_context_queue.maxlen) 
-    #             and  (len(self.action_context_queue) >= self.action_context_queue.maxlen)
-    #         ):
-    #             # Transform image data and prepare target context tensor
-    #             transformed_context_queue = transform_images(list(self.context_queue), transform=self.transform)
-    #             target_context_queue = np.array(self.target_context_queue)
 
-
-    #             # Prepare goal condition tensor
-    #             if self.use_subgoal and self.latest_observed_obj_det is not None:
-    #                 self.subgoal_to_target, radius = self.subgoal_gen.sample_subgoal(self.latest_observed_obj_det,self.goal_to_target)
-    #                 goal_to_target = self.subgoal_to_target
-    #                 rospy.loginfo_throttle(3,f"Current target position {self.latest_observed_obj_det} | Subgoal generated: {goal_to_target}")
-    #                 # Publish the subgoal marker
-    #                 self.publish_subgoal_marker(self.latest_observed_obj_det, self.base_frame, radius)
-    #             elif self.use_subgoal and self.subgoal_to_target is not None:
-    #                 goal_to_target = self.subgoal_to_target
-    #                 rospy.loginfo("Using last subgoal!")
-    #             else:
-    #                 goal_to_target = self.goal_to_target
-                
-                
-    #             ## TODO: change this
-    #             goal_rel_pos_to_target = normalize_data(data=goal_to_target, stats={'min': -self.max_depth / 1000, 'max': self.max_depth / 1000}, norm_type="maxmin")
-
-    #             prev_actions = None
-
-    #             if self.use_action_context:
-    #                 action_context_queue = np.array(self.action_context_queue)
-                    
-    #                 prev_positions = action_context_queue[:,:2]
-    #                 prev_yaw = action_context_queue[:,2]
-    #                 prev_waypoints = to_local_coords(prev_positions, prev_positions[0], prev_yaw[0])
-    #                 prev_yaw = prev_yaw[1:] - prev_yaw[0]  # yaw is relative to the initial yaw
-    #                 prev_actions = np.concatenate([prev_waypoints[1:], prev_yaw[:, None]], axis=-1)
-    #                 prev_actions = from_numpy(prev_actions)
-
-    #             target_context_mask = np.sum(target_context_queue == np.zeros((2,)), axis=1) == 2
-    #             no_target_in_context = np.all(target_context_mask)
-                
-    #             if no_target_in_context and len(self.vision_memory_queue)>0:
-    #                 ## No target info at context at all
-    #                 # and there is a memory stored:
-    #                 img_mem = self.vision_memory_queue[0]
-    #                 lin_mem = self.linear_memory_queue[0]
-    #                 img_msg = self.vision_memory_msgs[0]
-    #                 # self.memory_image_pub.publish(self.vision_memory_msgs[0])
-    #                 rospy.loginfo_throttle(0.5, f"Using memory!  ---> goal is {goal_to_target}")
-    #                 self.memory_image_pub.publish(img_msg)
-    #             else:
-    #                 ## When starting and target at frame
-    #                 img_mem = self.context_queue[-1]
-    #                 lin_mem = target_context_queue[-1]
-    #                 img_msg = self.latest_image_msg
-
-    #             transformed_vision_memory_img = transform_images([img_mem], transform=self.transform)
-    #             normalized_lin_mem = normalize_data(data=lin_mem, stats={'min': -self.max_depth / 1000, 'max': self.max_depth / 1000}, norm_type="maxmin" )
-
-    #             np_curr_rel_pos = np.zeros((target_context_queue.shape[0], self.target_dim))
-    #             np_curr_rel_pos[~target_context_mask] = normalize_data(data=target_context_queue[~target_context_mask], stats={'min': -self.max_depth / 1000, 'max': self.max_depth / 1000}, norm_type="maxmin" )
-
-    #             target_context_queue_tensor = from_numpy(np_curr_rel_pos)
-
-    #             normalized_lin_mem_tensor = from_numpy(normalized_lin_mem)
-    #             goal_to_target_tensor = from_numpy(goal_rel_pos_to_target)
-
-    #             # Perform inference to get waypoints
-    #             t = tic()
-    #             current_time = (rospy.Time.now() - self.start_time).to_sec()
-                
-    #             ## TODO: insert to model
-    #             waypoints = self.model(transformed_context_queue,
-    #                                 target_context_queue_tensor,
-    #                                 goal_to_target_tensor,
-    #                                 prev_actions,
-    #                                 transformed_vision_memory_img,
-    #                                 normalized_lin_mem_tensor
-    #                                 )
-    #             dt_infer = toc(t)
-    #             # rospy.loginfo(f"Inferencing time: {dt_infer:.4f} seconds.")
-    #             self.inference_times.append(dt_infer)
-    #             avg_inference_time = np.mean(self.inference_times)
-    #             rospy.loginfo_throttle(10, f"Average inference time (last {len(self.inference_times)}): {avg_inference_time:.4f} seconds.")
-
-
-    #             # Umi on legs
-    #             # Extract translations and quaternions from waypoints
-    #             translations = np.array([[wp[0], wp[1], 0.0] for wp in waypoints])  # Assuming z=0.0
-    #             quaternions_xyzw = np.array([quaternion_from_euler(0, 0, np.arctan2(wp[3], wp[2])) for wp in waypoints])
-    #             timestamps = np.array([current_time + ((i) / self.frame_rate) for i in range(len(waypoints))])
-
-    #             # Update the trajectory with the new predictions using RealtimeTraj
-    #             self.realtime_traj.update(
-    #                 translations=translations,
-    #                 quaternions_xyzw=quaternions_xyzw,
-    #                 timestamps=timestamps,
-    #                 current_timestamp= current_time + dt_infer,
-    #                 smoothen_time=self.smoothen_time  # Smooth transition over 1 second
-    #             )
-                
-    #             # Retrieve the smoothed trajectory for publishing
-    #             smoothed_translations, smoothed_quaternions = self.realtime_traj.interpolate_traj(timestamps)
-
-    #             try:
-                    
-    #                 self.ros_transform = self.tf_buffer.lookup_transform(target_frame=self.odom_frame,
-    #                                                                 source_frame=self.base_frame,
-    #                                                                 time = rospy.Time(0),
-    #                                                                 timeout=rospy.Duration(0.2))
-
-    #                 # Create and publish the updated path
-    #                 self.path = create_path_msg(zip(smoothed_translations, smoothed_quaternions, timestamps), waypoints_frame = self.base_frame,
-    #                                         path_frame_id=self.odom_frame,
-    #                                         seq=self.seq, transform=self.ros_transform)
-                    
-    #                 transformed_pose : PoseStamped = self.path.poses[self.wpt_i]
-    #                 self.transformed_pose: PoseStamped = transformed_pose
-    #                 # self.smooth_goal_filter.calculate_average(np.array(pos_yaw_from_pose(pose_msg=transformed_pose.pose)))
-                    
-    #                 # Calculate error of current relative target position from the desired relative target position
-    #                 if self.observed_target:
-    #                     d_cos_sin_target_in_robot_base = xy_to_d_cos_sin(np.array(self.latest_obj_det))
-    #                     d_cos_sin_target_in_robot_base_desired = xy_to_d_cos_sin(self.goal_to_target)
-
-                        
-    #                     dgoal = d_cos_sin_target_in_robot_base[0] - d_cos_sin_target_in_robot_base_desired[0]
-                        
-    #                     desired_goal_pos_in_robot_base = np.array([dgoal*d_cos_sin_target_in_robot_base[1],dgoal*d_cos_sin_target_in_robot_base[2]])
-                        
-    #                     desired_goal_yaw_in_robot_base = np.arctan2(d_cos_sin_target_in_robot_base[2],d_cos_sin_target_in_robot_base[1])
-
-                        
-    #                     x_d, y_d, yaw_d = self.smooth_goal_filter.calculate_average(np.array([desired_goal_pos_in_robot_base[0],
-    #                                                                                         desired_goal_pos_in_robot_base[1],
-    #                                                                                         desired_goal_yaw_in_robot_base]))
-                        
-                        
-    #                     desired_goal_quat_in_robot_base = quaternion_from_euler(0,0,yaw_d)
-
-    #                     desired_pose_stamped = create_pose_stamped([x_d, y_d], desired_goal_quat_in_robot_base, self.base_frame, self.seq, current_time)
-
-    #                     # Transform the pose to the odom frame
-    #                     desired_pose_stamped_in_odom: PoseStamped = do_transform_pose_stamped(pose_stamped=desired_pose_stamped,
-    #                                                                     transform=self.ros_transform)
-
-    #                     ### TODO: dgoal logic
-                        
-    #                     if abs(dgoal)<=0.8:
-    #                         self.transformed_pose: PoseStamped = desired_pose_stamped_in_odom
-
-    #                 self.transformed_pose.header.seq = self.seq
-                    
-    #                 self.seq+=1
-                    
-    #             except (LookupException, ConnectivityException, ExtrapolationException) as e:
-    #                 rospy.logwarn(f"Failed to transform pose: {str(e)}")
-    #                 self.transformed_pose = None  # Ensure the transformed_pose is not used if transformation fails
-    #                 self.path = None
-
-    #     else:
-            
-            
-    #         try:
-    #             rospy.loginfo_throttle(1,f"{GREEN_COLOR}Goal reached!{RESET_COLOR}")
-    #             current_time = rospy.Time.now()
-    #             pose_in_base = PoseStamped()
-                
-    #             yaw = clip_angles(np.arctan2(self.goal_to_target[1], self.goal_to_target[0]))
-                
-    #             q = quaternion_from_euler(0,0,yaw)
-                
-    #             pose_in_base.pose.orientation.x = q[0]
-    #             pose_in_base.pose.orientation.y = q[1]
-    #             pose_in_base.pose.orientation.z = q[2]
-    #             pose_in_base.pose.orientation.w = q[3]
-                
-    #             pose_in_base.header.frame_id = self.base_frame
-    #             pose_in_base.header.stamp = current_time 
-    #             self.ros_transform = self.tf_buffer.lookup_transform(target_frame=self.odom_frame,
-    #                                                             source_frame=self.base_frame,
-    #                                                             time = current_time,
-    #                                                             timeout=rospy.Duration(0.2))
-    #             # Create and publish the updated path
-    #             self.path = None
-
-    #             self.transformed_pose: PoseStamped  = do_transform_pose_stamped(pose_stamped=pose_in_base,transform=self.ros_transform)
-    #             self.transformed_pose.header.seq = self.seq
-                
-    #             self.seq+=1
-
-    #         except (LookupException, ConnectivityException, ExtrapolationException) as e:
-    #             rospy.logwarn(f"Failed to transform pose: {str(e)}")
-    #             self.transformed_pose = None  # Ensure the transformed_pose is not used if transformation fails
-    #             self.path = None
-
-    def goal_pub_callback(self,event):
-        # Publish the transformed pose
-        if self.transformed_pose is not None:
-            self.seq+=1
-            self.goal_pub_sensor.publish(self.transformed_pose)
-            # self.goal_pub_sensor.publish(self.transformed_pose)
-        if self.path is not None:
-            self.path_pub.publish(self.path)
+    # def goal_pub_callback(self,event):
+    #     # Publish the transformed pose
+    #     if self.transformed_pose is not None:
+    #         self.seq+=1
+    #         self.goal_pub_sensor.publish(self.transformed_pose)
+    #         # self.goal_pub_sensor.publish(self.transformed_pose)
+    #     if self.path is not None:
+    #         self.path_pub.publish(self.path)
 
     def topics_callback(self, image_msg: Image, obj_det_msg: ObjectsStamped, odom_msg: Odometry = None):
         """
@@ -640,36 +437,39 @@ class GoalGenerator(BaseGoalGenerator):
             image_msg (Image): Image message from the subscribed topic.
             obj_det_msg (ObjectsStamped): Object detection message from the subscribed topic.
         """
-        current_time = image_msg.header.stamp
+        current_time = rospy.Time.now()
+        
         self.observed_target = self._is_target_observed(obj_det_msg)
-        # Collect image data at the specified frame rate
+        
         dt_collect = (current_time - self.last_collect_time).to_sec()
         dt_inference = (current_time - self.last_inference_time).to_sec()
-        # self.latest_observed_obj_det = None
-        
+
+
+        # Collect data at specified rate
         if dt_collect >= 1.0 / self.frame_rate:
             self.last_collect_time = current_time
+            
             self.latest_image_msg = image_msg
+            
             self.latest_image = msg_to_pil(image_msg, max_depth=self.max_depth)
+            
             self.context_queue.append(self.latest_image)
-
             self.latest_obj_det = list(obj_det_msg.objects[0].position)[:2] if self.observed_target else [0, 0]
-
+            self.target_context_queue.append(self.latest_obj_det)
+            
+            
             if self.observed_target:
                 self.latest_observed_obj_det = np.array((self.latest_obj_det))
                 goal_reached = self.is_goal_reached(self.latest_observed_obj_det, self.goal_to_target)
+                
                 self.goal_reached.data = goal_reached
-
-                ## append to queue of vision and lin memory
+                
+                
+                ## Append to queue of vision and lin memory
                 self.vision_memory_queue.append(self.latest_image)
                 self.linear_memory_queue.append(self.latest_observed_obj_det)
-                
                 self.vision_memory_msgs.append(image_msg)
 
-
-
-            self.target_context_queue.append(self.latest_obj_det)
-            
             if odom_msg is not None:
                 self.latest_odom_pos = pos_yaw_from_odom(odom_msg=odom_msg)
                 self.action_context_queue.append(self.latest_odom_pos)
@@ -677,217 +477,236 @@ class GoalGenerator(BaseGoalGenerator):
         
         
         ############# inference
-
         # Perform inference at the specified inference rate
-        if not(self.goal_reached.data):
-            if (dt_inference >= 1.0 / self.inference_rate):
-                self.last_inference_time = current_time
-                if (
-                    (len(self.context_queue) >= self.context_queue.maxlen) 
-                    and (len(self.target_context_queue) >= self.target_context_queue.maxlen) 
-                    and  (len(self.action_context_queue) >= self.action_context_queue.maxlen)
-                ):
-                    # Transform image data and prepare target context tensor
-                    transformed_context_queue = transform_images(list(self.context_queue), transform=self.transform)
-                    target_context_queue = np.array(self.target_context_queue)
+        if (dt_inference >= 1.0 / self.inference_rate):
+            if not(self.goal_reached.data):
+                
+                    self.last_inference_time = current_time
+                    
+                    # Queues are full
+                    if (
+                        (len(self.context_queue) >= self.context_queue.maxlen) 
+                        and (len(self.target_context_queue) >= self.target_context_queue.maxlen) 
+                        and  (len(self.action_context_queue) >= self.action_context_queue.maxlen)
+                    ):
+                        # Transform image data and prepare target context tensor
+                        transformed_context_queue = transform_images(list(self.context_queue), transform=self.transform)
+                        target_context_queue = np.array(self.target_context_queue)
 
 
-                    # Prepare goal condition tensor
-                    if self.use_subgoal and self.latest_observed_obj_det is not None:
-                        self.subgoal_to_target, radius = self.subgoal_gen.sample_subgoal(self.latest_observed_obj_det,self.goal_to_target)
-                        goal_to_target = self.subgoal_to_target
-                        rospy.loginfo_throttle(3,f"Current target position {self.latest_observed_obj_det} | Subgoal generated: {goal_to_target}")
-                        # Publish the subgoal marker
-                        self.publish_subgoal_marker(self.latest_observed_obj_det, self.base_frame, radius)
-                    elif self.use_subgoal and self.subgoal_to_target is not None:
-                        goal_to_target = self.subgoal_to_target
-                        rospy.loginfo("Using last subgoal!")
-                    else:
-                        goal_to_target = self.goal_to_target
+                        # Prepare goal condition tensor
+                        if self.use_subgoal and self.observed_target:
+                            
+                            self.subgoal_to_target, radius = self.subgoal_gen.sample_subgoal(self.latest_observed_obj_det,self.goal_to_target)
+                            goal_to_target = self.subgoal_to_target
+                            rospy.loginfo_throttle(3,f"Target detected -> Using SubgoalGen, Publish marker")
+                            rospy.loginfo_throttle(3,f"Current target position {self.latest_observed_obj_det} | Subgoal generated: {goal_to_target}")
+                            # Publish the subgoal marker
+                            
+                            self.publish_subgoal_marker(self.latest_observed_obj_det, self.base_frame, radius)
+                        
+                        elif self.use_subgoal and self.subgoal_to_target is not None:
+                            rospy.loginfo_throttle(1,f"Target not detected -> Using last subgoal!")
+                            goal_to_target = self.subgoal_to_target
+                        else:
+                            # TODO: refactore -> always use use_subgoal
+                            ## Not in use!
+                            goal_to_target = self.goal_to_target
+                        
+                        
+                        ## TODO: change this
+                        goal_rel_pos_to_target = normalize_data(data=goal_to_target, stats={'min': -self.max_depth / 1000, 'max': self.max_depth / 1000}, norm_type="maxmin")
+
+                        prev_actions = None
+
+                        ## Take prev actions
+                        if self.use_action_context:
+                            action_context_queue = np.array(self.action_context_queue)
+                            
+                            prev_positions = action_context_queue[:,:2]
+                            prev_yaw = action_context_queue[:,2]
+                            prev_waypoints = to_local_coords(prev_positions, prev_positions[0], prev_yaw[0])
+                            prev_yaw = prev_yaw[1:] - prev_yaw[0]  # yaw is relative to the initial yaw
+                            prev_actions = np.concatenate([prev_waypoints[1:], prev_yaw[:, None]], axis=-1)
+                            prev_actions = from_numpy(prev_actions)
+
+                        
+                        ## Check if target in context
+                        #       - take the indices where there is no target
+                        target_context_mask = np.sum(target_context_queue == np.zeros((2,)), axis=1) == 2
+                        #       - check if in all of theme there is no target
+                        no_target_in_context = np.all(target_context_mask)
+                        
+                        
+                        ## Memory logic
+                        if no_target_in_context and len(self.vision_memory_queue)>0:
+                            ## No target info at context at all
+                            # and there is a memory stored (target was detected in past):
+                            img_mem = self.vision_memory_queue[0]
+                            lin_mem = self.linear_memory_queue[0]
+                            img_msg = self.vision_memory_msgs[0]
+                            rospy.loginfo_throttle(0.5, f"No target in context. Using memory!  ---> goal is {goal_to_target}, Publish image msg")
+                            self.memory_image_pub.publish(img_msg)
+                        else:
+                            ## When starting and target at frame
+                            img_mem = self.context_queue[-1]
+                            lin_mem = target_context_queue[-1]
+                            img_msg = self.latest_image_msg
+
+                        transformed_vision_memory_img = transform_images([img_mem], transform=self.transform)
+                        normalized_lin_mem = normalize_data(data=lin_mem, stats={'min': -self.max_depth / 1000, 'max': self.max_depth / 1000}, norm_type="maxmin" )
+
+                        np_curr_rel_pos = np.zeros((target_context_queue.shape[0], self.target_dim))
+                        np_curr_rel_pos[~target_context_mask] = normalize_data(data=target_context_queue[~target_context_mask], stats={'min': -self.max_depth / 1000, 'max': self.max_depth / 1000}, norm_type="maxmin" )
+
+                        target_context_queue_tensor = from_numpy(np_curr_rel_pos)
+
+                        normalized_lin_mem_tensor = from_numpy(normalized_lin_mem)
+                        goal_to_target_tensor = from_numpy(goal_rel_pos_to_target)
+
+                        # Perform inference to get waypoints
+                        t = tic()
+                        current_time_rel = (rospy.Time.now() - self.start_time).to_sec()
+                        
+                        ## TODO: insert to model
+                        waypoints = self.model(
+                                            transformed_context_queue,
+                                            target_context_queue_tensor,
+                                            goal_to_target_tensor,
+                                            prev_actions,
+                                            transformed_vision_memory_img,
+                                            normalized_lin_mem_tensor
+                                            )
+                        dt_infer = toc(t)
+                        # rospy.loginfo(f"Inferencing time: {dt_infer:.4f} seconds.")
+                        self.inference_times.append(dt_infer)
+                        avg_inference_time = np.mean(self.inference_times)
+                        rospy.loginfo_throttle(10, f"Average inference time (last {len(self.inference_times)}): {avg_inference_time:.4f} seconds.")
+
+
+                        # Umi on legs
+                        # Extract translations and quaternions from waypoints
+                        translations = np.array([[wp[0], wp[1], 0.0] for wp in waypoints])  # Assuming z=0.0
+                        quaternions_xyzw = np.array([quaternion_from_euler(0, 0, np.arctan2(wp[3], wp[2])) for wp in waypoints])
+                        timestamps = np.array([current_time_rel + ((i) / self.frame_rate) for i in range(len(waypoints))])
+
+                        # Update the trajectory with the new predictions using RealtimeTraj
+                        self.realtime_traj.update(
+                            translations=translations,
+                            quaternions_xyzw=quaternions_xyzw,
+                            timestamps=timestamps,
+                            current_timestamp= current_time_rel + dt_infer,
+                            smoothen_time=self.smoothen_time  # Smooth transition over 1 second
+                        )
+                        
+                        # Retrieve the smoothed trajectory for publishing
+                        smoothed_translations, smoothed_quaternions = self.realtime_traj.interpolate_traj(timestamps)
+
+                        try:
+                            
+                            self.ros_transform = self.tf_buffer.lookup_transform(target_frame=self.odom_frame,
+                                                                            source_frame=self.base_frame,
+                                                                            time = rospy.Time(0),
+                                                                            timeout=rospy.Duration(0.2))
+
+                            # Create and publish the updated path
+                            self.path = create_path_msg(zip(smoothed_translations, smoothed_quaternions, timestamps), waypoints_frame = self.base_frame,
+                                                    path_frame_id=self.odom_frame,
+                                                    seq=self.seq, transform=self.ros_transform)
+                            
+                            transformed_pose : PoseStamped = self.path.poses[self.wpt_i]
+                            self.transformed_pose: PoseStamped = transformed_pose
+                            # self.smooth_goal_filter.calculate_average(np.array(pos_yaw_from_pose(pose_msg=transformed_pose.pose)))
+                            
+                            # Calculate error of current relative target position from the desired relative target position
+                            if self.observed_target:
+                                d_cos_sin_target_in_robot_base = xy_to_d_cos_sin(np.array(self.latest_obj_det))
+                                d_cos_sin_target_in_robot_base_desired = xy_to_d_cos_sin(self.goal_to_target)
+
+
+                                dgoal = d_cos_sin_target_in_robot_base[0] - d_cos_sin_target_in_robot_base_desired[0]
+                                
+                                desired_goal_pos_in_robot_base = np.array([dgoal*d_cos_sin_target_in_robot_base[1],dgoal*d_cos_sin_target_in_robot_base[2]])
+                                
+                                desired_goal_yaw_in_robot_base = np.arctan2(d_cos_sin_target_in_robot_base[2],d_cos_sin_target_in_robot_base[1])
+
+                                
+                                x_d, y_d, yaw_d = self.smooth_goal_filter.calculate_average(np.array([desired_goal_pos_in_robot_base[0],
+                                                                                                    desired_goal_pos_in_robot_base[1],
+                                                                                                    desired_goal_yaw_in_robot_base]))
+                                
+                                
+                                desired_goal_quat_in_robot_base = quaternion_from_euler(0,0,yaw_d)
+
+                                desired_pose_stamped = create_pose_stamped([x_d, y_d], desired_goal_quat_in_robot_base, self.base_frame, self.seq, current_time)
+
+                                # Transform the pose to the odom frame
+                                desired_pose_stamped_in_odom: PoseStamped = do_transform_pose_stamped(pose_stamped=desired_pose_stamped,
+                                                                                transform=self.ros_transform)
+
+                                ### TODO: dgoal logic
+                                
+                                if abs(dgoal)<=0.7:
+                                    self.transformed_pose: PoseStamped = desired_pose_stamped_in_odom
+
+                            self.transformed_pose.header.seq = self.seq
+                            
+                            self.seq+=1
+                            
+                            
+                            
+                            ## Publish goal
+                            
+                        except (LookupException, ConnectivityException, ExtrapolationException) as e:
+                            rospy.logwarn(f"Failed to transform pose: {str(e)}")
+                            self.transformed_pose = None  # Ensure the transformed_pose is not used if transformation fails
+                            self.path = None
+
+            else:
+                ## Goal reached -> control the yaw
+                try:
+                    rospy.loginfo_throttle(1,f"{GREEN_COLOR}Goal reached!{RESET_COLOR}")
+                    # current_time = rospy.Time.now()
+                    pose_in_base = PoseStamped()
+                    
+                    yaw = clip_angles(np.arctan2(self.goal_to_target[1], self.goal_to_target[0]))
+                    
+                    q = quaternion_from_euler(0,0,yaw)
+                    
+                    pose_in_base.pose.orientation.x = q[0]
+                    pose_in_base.pose.orientation.y = q[1]
+                    pose_in_base.pose.orientation.z = q[2]
+                    pose_in_base.pose.orientation.w = q[3]
+                    
+                    pose_in_base.header.frame_id = self.base_frame
+                    pose_in_base.header.stamp = current_time 
+                    self.ros_transform = self.tf_buffer.lookup_transform(target_frame=self.odom_frame,
+                                                                    source_frame=self.base_frame,
+                                                                    time = current_time,
+                                                                    timeout=rospy.Duration(0.2))
+                    # Create and publish the updated path
+                    self.path = None
+
+                    self.transformed_pose: PoseStamped  = do_transform_pose_stamped(pose_stamped=pose_in_base,transform=self.ros_transform)
+                    self.transformed_pose.header.seq = self.seq
+                    
+                    self.seq+=1
                     
                     
-                    ## TODO: change this
-                    goal_rel_pos_to_target = normalize_data(data=goal_to_target, stats={'min': -self.max_depth / 1000, 'max': self.max_depth / 1000}, norm_type="maxmin")
+                    ## Publish goal
 
-                    prev_actions = None
+                except (LookupException, ConnectivityException, ExtrapolationException) as e:
+                    rospy.logwarn(f"Failed to transform pose: {str(e)}")
+                    self.transformed_pose = None  # Ensure the transformed_pose is not used if transformation fails
+                    self.path = None
 
-                    if self.use_action_context:
-                        action_context_queue = np.array(self.action_context_queue)
-                        
-                        prev_positions = action_context_queue[:,:2]
-                        prev_yaw = action_context_queue[:,2]
-                        prev_waypoints = to_local_coords(prev_positions, prev_positions[0], prev_yaw[0])
-                        prev_yaw = prev_yaw[1:] - prev_yaw[0]  # yaw is relative to the initial yaw
-                        prev_actions = np.concatenate([prev_waypoints[1:], prev_yaw[:, None]], axis=-1)
-                        prev_actions = from_numpy(prev_actions)
-
-                    target_context_mask = np.sum(target_context_queue == np.zeros((2,)), axis=1) == 2
-                    no_target_in_context = np.all(target_context_mask)
-                    
-                    if no_target_in_context and len(self.vision_memory_queue)>0:
-                        ## No target info at context at all
-                        # and there is a memory stored:
-                        img_mem = self.vision_memory_queue[0]
-                        lin_mem = self.linear_memory_queue[0]
-                        img_msg = self.vision_memory_msgs[0]
-                        # self.memory_image_pub.publish(self.vision_memory_msgs[0])
-                        rospy.loginfo_throttle(0.5, f"Using memory!  ---> goal is {goal_to_target}")
-                        self.memory_image_pub.publish(img_msg)
-                    else:
-                        ## When starting and target at frame
-                        img_mem = self.context_queue[-1]
-                        lin_mem = target_context_queue[-1]
-                        img_msg = self.latest_image_msg
-
-                    transformed_vision_memory_img = transform_images([img_mem], transform=self.transform)
-                    normalized_lin_mem = normalize_data(data=lin_mem, stats={'min': -self.max_depth / 1000, 'max': self.max_depth / 1000}, norm_type="maxmin" )
-
-                    np_curr_rel_pos = np.zeros((target_context_queue.shape[0], self.target_dim))
-                    np_curr_rel_pos[~target_context_mask] = normalize_data(data=target_context_queue[~target_context_mask], stats={'min': -self.max_depth / 1000, 'max': self.max_depth / 1000}, norm_type="maxmin" )
-
-                    target_context_queue_tensor = from_numpy(np_curr_rel_pos)
-
-                    normalized_lin_mem_tensor = from_numpy(normalized_lin_mem)
-                    goal_to_target_tensor = from_numpy(goal_rel_pos_to_target)
-
-                    # Perform inference to get waypoints
-                    t = tic()
-                    current_time_rel = (rospy.Time.now() - self.start_time).to_sec()
-                    
-                    ## TODO: insert to model
-                    waypoints = self.model(transformed_context_queue,
-                                        target_context_queue_tensor,
-                                        goal_to_target_tensor,
-                                        prev_actions,
-                                        transformed_vision_memory_img,
-                                        normalized_lin_mem_tensor
-                                        )
-                    dt_infer = toc(t)
-                    # rospy.loginfo(f"Inferencing time: {dt_infer:.4f} seconds.")
-                    self.inference_times.append(dt_infer)
-                    avg_inference_time = np.mean(self.inference_times)
-                    rospy.loginfo_throttle(10, f"Average inference time (last {len(self.inference_times)}): {avg_inference_time:.4f} seconds.")
-
-
-                    # Umi on legs
-                    # Extract translations and quaternions from waypoints
-                    translations = np.array([[wp[0], wp[1], 0.0] for wp in waypoints])  # Assuming z=0.0
-                    quaternions_xyzw = np.array([quaternion_from_euler(0, 0, np.arctan2(wp[3], wp[2])) for wp in waypoints])
-                    timestamps = np.array([current_time_rel + ((i) / self.frame_rate) for i in range(len(waypoints))])
-
-                    # Update the trajectory with the new predictions using RealtimeTraj
-                    self.realtime_traj.update(
-                        translations=translations,
-                        quaternions_xyzw=quaternions_xyzw,
-                        timestamps=timestamps,
-                        current_timestamp= current_time_rel + dt_infer,
-                        smoothen_time=self.smoothen_time  # Smooth transition over 1 second
-                    )
-                    
-                    # Retrieve the smoothed trajectory for publishing
-                    smoothed_translations, smoothed_quaternions = self.realtime_traj.interpolate_traj(timestamps)
-
-                    try:
-                        
-                        self.ros_transform = self.tf_buffer.lookup_transform(target_frame=self.odom_frame,
-                                                                        source_frame=self.base_frame,
-                                                                        time = rospy.Time(0),
-                                                                        timeout=rospy.Duration(0.2))
-
-                        # Create and publish the updated path
-                        self.path = create_path_msg(zip(smoothed_translations, smoothed_quaternions, timestamps), waypoints_frame = self.base_frame,
-                                                path_frame_id=self.odom_frame,
-                                                seq=self.seq, transform=self.ros_transform)
-                        
-                        transformed_pose : PoseStamped = self.path.poses[self.wpt_i]
-                        self.transformed_pose: PoseStamped = transformed_pose
-                        # self.smooth_goal_filter.calculate_average(np.array(pos_yaw_from_pose(pose_msg=transformed_pose.pose)))
-                        
-                        # Calculate error of current relative target position from the desired relative target position
-                        if self.observed_target:
-                            d_cos_sin_target_in_robot_base = xy_to_d_cos_sin(np.array(self.latest_obj_det))
-                            d_cos_sin_target_in_robot_base_desired = xy_to_d_cos_sin(self.goal_to_target)
-
-                            
-                            dgoal = d_cos_sin_target_in_robot_base[0] - d_cos_sin_target_in_robot_base_desired[0]
-                            
-                            desired_goal_pos_in_robot_base = np.array([dgoal*d_cos_sin_target_in_robot_base[1],dgoal*d_cos_sin_target_in_robot_base[2]])
-                            
-                            desired_goal_yaw_in_robot_base = np.arctan2(d_cos_sin_target_in_robot_base[2],d_cos_sin_target_in_robot_base[1])
-
-                            
-                            x_d, y_d, yaw_d = self.smooth_goal_filter.calculate_average(np.array([desired_goal_pos_in_robot_base[0],
-                                                                                                desired_goal_pos_in_robot_base[1],
-                                                                                                desired_goal_yaw_in_robot_base]))
-                            
-                            
-                            desired_goal_quat_in_robot_base = quaternion_from_euler(0,0,yaw_d)
-
-                            desired_pose_stamped = create_pose_stamped([x_d, y_d], desired_goal_quat_in_robot_base, self.base_frame, self.seq, current_time)
-
-                            # Transform the pose to the odom frame
-                            desired_pose_stamped_in_odom: PoseStamped = do_transform_pose_stamped(pose_stamped=desired_pose_stamped,
-                                                                            transform=self.ros_transform)
-
-                            ### TODO: dgoal logic
-                            
-                            if abs(dgoal)<=0.6:
-                                self.transformed_pose: PoseStamped = desired_pose_stamped_in_odom
-
-                        self.transformed_pose.header.seq = self.seq
-                        
-                        self.seq+=1
-                        
-                    except (LookupException, ConnectivityException, ExtrapolationException) as e:
-                        rospy.logwarn(f"Failed to transform pose: {str(e)}")
-                        self.transformed_pose = None  # Ensure the transformed_pose is not used if transformation fails
-                        self.path = None
-
-        else:
+            # Publish the transformed pose
+            if self.transformed_pose is not None:
+                self.goal_pub_sensor.publish(self.transformed_pose)
+                # self.goal_pub_sensor.publish(self.transformed_pose)
+            if self.path is not None:
+                self.path_pub.publish(self.path)
             
-            
-            try:
-                rospy.loginfo_throttle(1,f"{GREEN_COLOR}Goal reached!{RESET_COLOR}")
-                # current_time = rospy.Time.now()
-                pose_in_base = PoseStamped()
-                
-                yaw = clip_angles(np.arctan2(self.goal_to_target[1], self.goal_to_target[0]))
-                
-                q = quaternion_from_euler(0,0,yaw)
-                
-                pose_in_base.pose.orientation.x = q[0]
-                pose_in_base.pose.orientation.y = q[1]
-                pose_in_base.pose.orientation.z = q[2]
-                pose_in_base.pose.orientation.w = q[3]
-                
-                pose_in_base.header.frame_id = self.base_frame
-                pose_in_base.header.stamp = current_time 
-                self.ros_transform = self.tf_buffer.lookup_transform(target_frame=self.odom_frame,
-                                                                source_frame=self.base_frame,
-                                                                time = current_time,
-                                                                timeout=rospy.Duration(0.2))
-                # Create and publish the updated path
-                self.path = None
-
-                self.transformed_pose: PoseStamped  = do_transform_pose_stamped(pose_stamped=pose_in_base,transform=self.ros_transform)
-                self.transformed_pose.header.seq = self.seq
-                
-                self.seq+=1
-
-            except (LookupException, ConnectivityException, ExtrapolationException) as e:
-                rospy.logwarn(f"Failed to transform pose: {str(e)}")
-                self.transformed_pose = None  # Ensure the transformed_pose is not used if transformation fails
-                self.path = None
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
         ############# end inference
 
         ## pub goal reached

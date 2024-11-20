@@ -20,13 +20,13 @@ model:
   # Pidiff
 
 
-  model_name: pidiff_bsz128_c2_ac1_gcTrue_gcp0.0_ah16_ph32_tceTrue_ntmaxmin_2024-11-19_13-42-18_fintuned_2024-11-19_15-02-29
+  model_name: pidiff_bsz128_c2_ac1_gcTrue_gcp0.8_ah16_ph32_tceTrue_ntmaxmin_2024-11-20_11-13-12
   model_version: latest # best_model | latest | <epoch_number> (int)
 
   frame_rate: 15 # NOTE: please pay atteniton that this value is similar to the sampling rate
                 # of the data collected to train the policy
   pub_rate: 5
-  inference_rate: 10
+  inference_rate: 5
 
   # # Vint 
   # pub_rate: 5
