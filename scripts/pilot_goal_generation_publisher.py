@@ -38,6 +38,104 @@ from dynamic_reconfigure.server import Server
 GREEN_COLOR = "\033[92m"
 RESET_COLOR = "\033[0m"
 
+
+
+class ROSTimers:
+    def __init__(self, *timers):
+        """
+        Initialize the ROSTimers class with tuples of (name, rate).
+        Each tuple will create a timer and a queue buffer of size equal to the rate.
+        """
+        self.timers = {}
+        self.global_time = None  # To store the global current time
+        for name, rate in timers:
+            self.timers[name] = {
+                "rate": rate,
+                "last_tick": rospy.get_time(),
+                "queue": deque(maxlen=rate)
+            }
+
+    # def tick(self):
+    #     """
+    #     Store the current ROS time globally.
+    #     """
+    #     self.global_time = rospy.get_time()
+
+    def tick(self, time):
+        """
+        Store the current ROS time globally.
+        """
+        self.global_time = time
+
+    def tock(self, name, current_time):
+        """
+        Calculate the time difference in seconds since the last tock, update the queue, and log the average delta time.
+        """
+        if name not in self.timers:
+            rospy.logwarn(f"Timer {name} does not exist.")
+            return None
+
+
+
+        timer = self.timers[name]
+        
+        # Calculate delta time
+        dt = current_time - timer["last_tick"]
+        
+        return dt
+
+    def event(self, name):
+        """
+        Check if the tock(name) is within the limit of 1/<rate> for the given timer.
+        """
+        if name not in self.timers:
+            rospy.logwarn(f"Timer {name} does not exist.")
+            return False
+
+        timer = self.timers[name]
+        
+        if self.global_time is None:
+            rospy.logwarn("Global tick has not been recorded yet.")
+            return None
+        
+        current_time = self.global_time
+
+        dt = self.tock(name, current_time)
+        # rospy.loginfo(f"[Timer: {name}] Dt: {dt:.6f} >= {dt:.6f}.")
+        
+        if dt is None:
+            rospy.logwarn(f"Event check failed for timer {name}.")
+            return False
+        
+        rate = timer["rate"]
+        limit = 1.0 / rate
+        
+        if dt >= limit:
+            # rospy.loginfo(f"[Timer: {name}] Event up: {dt:.6f} >= {limit:.6f}.")
+            
+            timer["last_tick"] = current_time
+            
+            timer["queue"].append(dt)
+
+            # Calculate the average delta time
+            avg_dt = sum(timer["queue"]) / len(timer["queue"])
+
+            
+            # Log the average delta time every 3 seconds
+            rospy.loginfo_throttle(
+                3, f"[Timer: {name}] Avg rate: {1 / avg_dt:.6f} hz | Window sizw: {rate}"
+            )
+            
+            return True
+        else:
+            # rospy.logwarn(f"[Timer: {name}] Event exceeded limit: {dt:.6f} > {limit:.6f}.")
+            return False
+
+        
+    def set_timer_rate(self,name, rate):
+        
+        self.timers[name]["rate"] = rate   
+
 def pos_yaw_from_odom(odom_msg:Odometry)->list:
     """
     Extracts position and yaw from a Odometry message.
@@ -166,7 +264,6 @@ class BaseGoalGenerator:
         current_time = rospy.Time.now()
         self.last_collect_time = current_time
         self.last_inference_time = current_time
-        self.last_msg_time = current_time
 
         # ROS publishers
         self.path_pub = rospy.Publisher('/poses_path', Path, queue_size=10)
@@ -206,9 +303,23 @@ class BaseGoalGenerator:
         self.base_frame = self.params["base_frame"]
         
         # Setup inference timing
+        
+        
         self.frame_rate = self.params["frame_rate"]
-        self.pub_rate = self.params["pub_rate"]
         self.inference_rate = self.params["inference_rate"]
+        
+
+        # Not in use
+        # self.pub_rate = self.params["pub_rate"]
+        
+
+        self.ros_timers = ROSTimers(("collect_data", self.frame_rate),
+                                    ("inference", self.inference_rate))
+        
+        self.ros_timers.tick(rospy.get_time())
+        
+        self.srv = Server(ParametersConfig, self.cfg_callback)
+        
         self.inference_times = deque(maxlen=self.inference_rate)
         
         
@@ -321,6 +432,19 @@ class BaseGoalGenerator:
         """
         return bool(obj_det_msg.objects)
 
+    def cfg_callback(self, config, level):
+        rospy.loginfo("""Reconfigure Request:
+                        frame_rate = {frame_rate}, 
+                        wpt_i = {wpt_i}, 
+                        smoothen_time = {smoothen_time}""".format(**config))
+
+        # Update the corresponding variables in your class
+        self.frame_rate = config.frame_rate
+        self.ros_timers.set_timer_rate("collect_data", self.frame_rate)
+        self.wpt_i = min(config.wpt_i, self.model.action_horizon-1)
+        self.smoothen_time = config.smoothen_time
+
+        return config
 
 class GoalGenerator(BaseGoalGenerator):
     def __init__(self):
@@ -345,7 +469,7 @@ class GoalGenerator(BaseGoalGenerator):
         # self.goal_pub_timer = rospy.Timer(rospy.Duration(1/self.pub_rate),
         #                                     self.goal_pub_callback)
 
-        self.srv = Server(ParametersConfig, self.cfg_callback)
+        
         
         
         # Initialize the service client without waiting
@@ -407,18 +531,7 @@ class GoalGenerator(BaseGoalGenerator):
                 rospy.logwarn("Recording service is unavailable.")
             self.recording_service_available = False
 
-    def cfg_callback(self, config, level):
-        rospy.loginfo("""Reconfigure Request:
-                        frame_rate = {frame_rate}, 
-                        wpt_i = {wpt_i}, 
-                        smoothen_time = {smoothen_time}""".format(**config))
 
-        # Update the corresponding variables in your class
-        self.frame_rate = config.frame_rate
-        self.wpt_i = min(config.wpt_i, self.model.action_horizon-1)
-        self.smoothen_time = config.smoothen_time
-
-        return config
 
     def topics_callback(self, image_msg: Image, obj_det_msg: ObjectsStamped, odom_msg: Odometry = None):
         """
@@ -431,6 +544,7 @@ class GoalGenerator(BaseGoalGenerator):
         
         # Reset current time
         current_time = image_msg.header.stamp
+        self.ros_timers.tick(current_time.to_sec())
         
         # Calc transform from base_frame to odom_frame
         self.ros_transform = self.tf_buffer.lookup_transform(target_frame=self.odom_frame,
@@ -457,7 +571,7 @@ class GoalGenerator(BaseGoalGenerator):
         self.goal_reached.data = False
         
                 # Collect data at specified rate
-        if dt_collect >= 1.0 / self.frame_rate:
+        if self.ros_timers.event("collect_data"):
             self.last_collect_time = current_time
 
             self.latest_image = msg_to_pil(self.latest_image_msg, max_depth=self.max_depth)
@@ -475,9 +589,7 @@ class GoalGenerator(BaseGoalGenerator):
         
         
         try:
-            
 
-                
             # When target is detected -> calculate the relative distance. Then apply some logic.
             if self.observed_target:
                     
@@ -507,8 +619,6 @@ class GoalGenerator(BaseGoalGenerator):
 
                     desired_pose_stamped = create_pose_stamped([x_d, y_d], desired_goal_quat_in_robot_base, self.base_frame, self.seq, current_time)
 
-                    
-                    
                     # If distance of goal is less then some thresh
                     if abs(dgoal)<=0.7:
                         # Transform the desired pose to the odom frame
@@ -518,7 +628,7 @@ class GoalGenerator(BaseGoalGenerator):
                         # set pose to the relative pose
                         self.transformed_pose: PoseStamped = desired_pose_stamped_in_odom
                     else:
-                        if (dt_inference >= 1.0 / self.inference_rate):   
+                        if self.ros_timers.event("inference"):   
                             self.last_inference_time = current_time
                             # Not in target zone -> apply model
                             self.transformed_pose: PoseStamped = self.model_predict()
@@ -549,13 +659,13 @@ class GoalGenerator(BaseGoalGenerator):
             # No detected target (it means that goal not reached also) -> apply model predictions.
             else:
                 
-                if (dt_inference >= 1.0 / self.inference_rate):   
+                if self.ros_timers.event("inference"):   
                         self.last_inference_time = current_time
                         self.transformed_pose: PoseStamped = self.model_predict()
-                
+
             self.transformed_pose.header.seq = self.seq
             self.seq+=1
-
+            
         
         except (LookupException, ConnectivityException, ExtrapolationException) as e:
             rospy.logwarn(f"Failed to transform pose: {str(e)}")
@@ -731,12 +841,6 @@ class GoalGenerator(BaseGoalGenerator):
             
             # Retrieve the smoothed trajectory for publishing
             smoothed_translations, smoothed_quaternions = self.realtime_traj.interpolate_traj(timestamps)
-
-                
-            # self.ros_transform = self.tf_buffer.lookup_transform(target_frame=self.odom_frame,
-            #                                                 source_frame=self.base_frame,
-            #                                                 time = rospy.Time(0),
-            #                                                 timeout=rospy.Duration(0.2))
 
             # Create and publish the updated path
             self.path = create_path_msg(zip(smoothed_translations, smoothed_quaternions, timestamps), waypoints_frame = self.base_frame,
