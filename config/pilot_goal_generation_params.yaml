@@ -26,8 +26,8 @@ model:
 
   frame_rate: 15 # NOTE: please pay atteniton that this value is similar to the sampling rate
                 # of the data collected to train the policy
-  pub_rate: 6
-  inference_rate: 6
+
+  inference_rate: 10
 
   # # Vint 
   # pub_rate: 5
@@ -48,8 +48,8 @@ topics:
 
 filter:
 
-  sensor_moving_window_size: 5
-  smoothen_time: 0.0
+  sensor_moving_window_size: 10
+  smoothen_time: 0.2
 
 
 
