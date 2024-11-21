@@ -19,15 +19,25 @@ model:
 
   # Pidiff
 
-  # model_name: pidiff_bsz128_c2_ac1_gcTrue_gcp0.75_ah16_ph32_tceTrue_ntmaxmin_2024-11-21_11-56-45 # zero shot
-  model_name: pidiff_bsz128_c2_ac1_gcTrue_gcp0.75_ah16_ph32_tceTrue_ntmaxmin_2024-11-21_11-56-45_fintuned_2024-11-21_13-51-09
-  
+  # outside & zero shot inside:
+  # model_name: pidiff_bsz128_c2_ac1_gcTrue_gcp0.0_ah16_ph32_tceTrue_ntmaxmin_2024-11-21_11-26-41
+  # model_name: pidiff_bsz128_c2_ac1_gcTrue_gcp0.75_ah16_ph32_tceTrue_ntmaxmin_2024-11-21_11-56-45 # zero shot 
+
+  # indoor 0.5 data:
+  # model_name: pidiff_bsz128_c2_ac1_gcTrue_gcp0.0_ah16_ph32_tceTrue_ntmaxmin_2024-11-21_11-26-41_fintuned_2024-11-21_18-40-44_p50
+  # model_name: pidiff_bsz128_c2_ac1_gcTrue_gcp0.75_ah16_ph32_tceTrue_ntmaxmin_2024-11-21_11-56-45_fintuned_2024-11-21_18-46-57_p50
+
+  # indoor full data:
+  # model_name: pidiff_bsz128_c2_ac1_gcTrue_gcp0.0_ah16_ph32_tceTrue_ntmaxmin_2024-11-21_11-26-41_fintuned_2024-11-21_13-37-36
+  # model_name: pidiff_bsz128_c2_ac1_gcTrue_gcp0.75_ah16_ph32_tceTrue_ntmaxmin_2024-11-21_11-56-45_fintuned_2024-11-21_13-51-09
+
+
   model_version: latest # best_model | latest | <epoch_number> (int)
 
-  frame_rate: 12 # NOTE: please pay atteniton that this value is similar to the sampling rate
+  frame_rate: 15 # NOTE: please pay atteniton that this value is similar to the sampling rate
                 # of the data collected to train the policy
 
-  inference_rate: 6
+  inference_rate: 5
 
   # # Vint 
   # pub_rate: 5

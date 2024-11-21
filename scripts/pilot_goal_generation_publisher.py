@@ -508,8 +508,8 @@ class GoalGenerator(BaseGoalGenerator):
         
         self.ats = message_filters.ApproximateTimeSynchronizer(
             fs=self.sync_topics_list,
-            queue_size=100,
-            slop=3.5)
+            queue_size=10,
+            slop=0.1)
         
         
         self.ats.registerCallback(self.topics_callback)
@@ -546,54 +546,56 @@ class GoalGenerator(BaseGoalGenerator):
         current_time = image_msg.header.stamp
         self.ros_timers.tick(current_time.to_sec())
         
-        # Calc transform from base_frame to odom_frame
-        self.ros_transform = self.tf_buffer.lookup_transform(target_frame=self.odom_frame,
-                                                                    source_frame=self.base_frame,
-                                                                    time=current_time,
-                                                                    timeout=rospy.Duration(0.2))
-        
-        # Check for target detection
-        self.observed_target = self._is_target_observed(obj_det_msg)
-        
-        # Set dt's
-        dt_collect = (current_time - self.last_collect_time).to_sec()
-        dt_inference = (current_time - self.last_inference_time).to_sec()
-
-        # ROS msgs to variables
-        # Odom
-        self.latest_odom_pos = pos_yaw_from_odom(odom_msg=odom_msg)
-        # Detection
-        self.latest_obj_det = list(obj_det_msg.objects[0].position)[:2] if self.observed_target else [0, 0]
-        # Depth image
-        self.latest_image_msg = image_msg
-        
-        # Check for goal reaching at topics rate.
-        self.goal_reached.data = False
-        
-                # Collect data at specified rate
-        if self.ros_timers.event("collect_data"):
-            self.last_collect_time = current_time
-
-            self.latest_image = msg_to_pil(self.latest_image_msg, max_depth=self.max_depth)
-            
-            # Enques
-            self.context_queue.append(self.latest_image)
-            self.target_context_queue.append(self.latest_obj_det)
-            self.action_context_queue.append(self.latest_odom_pos)
-            
-            
-            ## Append to queue of vision and lin memory
-            self.vision_memory_queue.append(self.latest_image)
-            self.linear_memory_queue.append(self.latest_observed_obj_det)
-            self.vision_memory_msgs.append(self.latest_image_msg)
-        
-        
         try:
+            # Calc transform from base_frame to odom_frame
+            self.ros_transform = self.tf_buffer.lookup_transform(target_frame=self.odom_frame,
+                                                                        source_frame=self.base_frame,
+                                                                        time=current_time,
+                                                                        timeout=rospy.Duration(0.1))
+            
+            # Check for target detection
+            self.observed_target = self._is_target_observed(obj_det_msg)
+            
+            # Set dt's
+            dt_collect = (current_time - self.last_collect_time).to_sec()
+            dt_inference = (current_time - self.last_inference_time).to_sec()
+
+            # ROS msgs to variables
+            # Odom
+            self.latest_odom_pos = pos_yaw_from_odom(odom_msg=odom_msg)
+            # Detection
+            self.latest_obj_det = list(obj_det_msg.objects[0].position)[:2] if self.observed_target else [0, 0]
+            # Depth image
+            self.latest_image_msg = image_msg
+            
+            # Check for goal reaching at topics rate.
+            self.goal_reached.data = False
+            
+            # Collect data at specified rate
+            if self.ros_timers.event("collect_data"):
+            # if dt_collect >= (1/self.frame_rate) :
+                self.last_collect_time = current_time
+
+                self.latest_image = msg_to_pil(self.latest_image_msg, max_depth=self.max_depth)
+                
+                # Enques
+                self.context_queue.append(self.latest_image)
+                self.target_context_queue.append(self.latest_obj_det)
+                self.action_context_queue.append(self.latest_odom_pos)
+
 
             # When target is detected -> calculate the relative distance. Then apply some logic.
             if self.observed_target:
-                    
+                
                 self.latest_observed_obj_det = np.array((self.latest_obj_det))
+                
+                
+                ## Append to queue of vision and lin memory
+                self.vision_memory_queue.append(self.latest_image)
+                self.linear_memory_queue.append(self.latest_observed_obj_det)
+                self.vision_memory_msgs.append(self.latest_image_msg)
+                
+                
                 goal_reached = self.is_goal_reached(self.latest_observed_obj_det, self.goal_to_target)
                 self.goal_reached.data = goal_reached
 
@@ -627,11 +629,27 @@ class GoalGenerator(BaseGoalGenerator):
                                                                         transform=self.ros_transform)
                         # set pose to the relative pose
                         self.transformed_pose: PoseStamped = desired_pose_stamped_in_odom
+                        
+                        if self.transformed_pose is not None:
+                                self.transformed_pose.header.seq = self.seq
+                                self.seq+=1
+                                self.goal_pub_sensor.publish(self.transformed_pose)
+                                
                     else:
-                        if self.ros_timers.event("inference"):   
+                        if self.ros_timers.event("inference"):
+                        # if dt_collect >= (1/self.inference_rate) :
                             self.last_inference_time = current_time
                             # Not in target zone -> apply model
                             self.transformed_pose: PoseStamped = self.model_predict()
+                            # Publish the transformed pose
+                            if self.transformed_pose is not None:
+                                self.transformed_pose.header.seq = self.seq
+                                self.seq+=1
+                                self.goal_pub_sensor.publish(self.transformed_pose)
+
+                            # self.goal_pub_sensor.publish(self.transformed_pose)
+                            if self.path is not None:
+                                self.path_pub.publish(self.path)
                 
                 ## Goal reached, means also observed target -> Control yaw!
                 else:
@@ -656,15 +674,29 @@ class GoalGenerator(BaseGoalGenerator):
 
                     self.transformed_pose: PoseStamped  = do_transform_pose_stamped(pose_stamped=pose_in_base,transform=self.ros_transform)
 
+                    # Publish the transformed pose
+                    if self.transformed_pose is not None:
+                        self.transformed_pose.header.seq = self.seq
+                        self.seq+=1
+                        self.goal_pub_sensor.publish(self.transformed_pose)
+                        
             # No detected target (it means that goal not reached also) -> apply model predictions.
             else:
                 
                 if self.ros_timers.event("inference"):   
                         self.last_inference_time = current_time
                         self.transformed_pose: PoseStamped = self.model_predict()
+                        
+                        if self.transformed_pose is not None:
+                                self.transformed_pose.header.seq = self.seq
+                                self.seq+=1
+                                self.goal_pub_sensor.publish(self.transformed_pose)
 
-            self.transformed_pose.header.seq = self.seq
-            self.seq+=1
+                        # self.goal_pub_sensor.publish(self.transformed_pose)
+                        if self.path is not None:
+                            self.path_pub.publish(self.path)
+
+            
             
         
         except (LookupException, ConnectivityException, ExtrapolationException) as e:
@@ -673,20 +705,6 @@ class GoalGenerator(BaseGoalGenerator):
             self.path = None
 
         self.goal_reached_pub.publish(self.goal_reached) ## TODO: case of not observed_target
-
-
-
-
-
-        # Publish the transformed pose
-        if self.transformed_pose is not None:
-            self.goal_pub_sensor.publish(self.transformed_pose)
-            
-            # self.goal_pub_sensor.publish(self.transformed_pose)
-        if self.path is not None:
-            self.path_pub.publish(self.path)
-            
-        # ############# end inference
 
         
         
