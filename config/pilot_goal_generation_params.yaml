@@ -2,10 +2,10 @@ robot: go2 # turtlebot | go2 | nimrod
 
 frames:
   odom_frame: odom
-  base_frame: base_footprint
+  # base_frame: base_footprint
 
   # base_frame: base_link
-  # base_frame: zedm_left_camera_frame
+  base_frame: zedm_left_camera_frame
 
 model: 
 
@@ -22,14 +22,14 @@ model:
   # outside & zero shot inside:
   # model_name: pidiff_bsz128_c2_ac1_gcTrue_gcp0.0_ah16_ph32_tceTrue_ntmaxmin_2024-11-21_11-26-41
   # model_name: pidiff_bsz128_c2_ac1_gcTrue_gcp0.75_ah16_ph32_tceTrue_ntmaxmin_2024-11-21_11-56-45 # zero shot 
-  # model_name: pidiff_bsz256_c2_ac2_gcTrue_gcp0.75_ah16_ph32_tceTrue_ntmaxmin_2024-11-24_17-17-18
+  model_name: pidiff_bsz128_c1_ac1_gcTrue_gcp0.75_ah16_ph64_tceTrue_ntmaxmin_2024-11-26_22-06-00
   
   # indoor 0.5 data:
   # model_name: pidiff_bsz128_c2_ac1_gcTrue_gcp0.0_ah16_ph32_tceTrue_ntmaxmin_2024-11-21_11-26-41_fintuned_2024-11-21_18-40-44_p50
   # model_name: pidiff_bsz128_c2_ac1_gcTrue_gcp0.75_ah16_ph32_tceTrue_ntmaxmin_2024-11-21_11-56-45_fintuned_2024-11-21_18-46-57_p50
 
   # indoor full data:
-  model_name: pidiff_bsz256_c2_ac2_gcTrue_gcp0.75_ah16_ph32_tceTrue_ntmaxmin_2024-11-24_17-17-18_fintuned_2024-11-26_17-32-18
+  # model_name: pidiff_bsz256_c2_ac2_gcTrue_gcp0.75_ah16_ph32_tceTrue_ntmaxmin_2024-11-24_17-17-18_fintuned_2024-11-26_17-32-18
 
 
   model_version: latest # best_model | latest | <epoch_number> (int)

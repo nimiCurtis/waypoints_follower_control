@@ -363,7 +363,7 @@ class BaseGoalGenerator:
 
         params = {
             "robot": rospy.get_param(self.node_name + "/robot", default="go2"),
-            "model_name": rospy.get_param(self.node_name + "/model/model_name", default="pidiff_bsz256_c2_ac2_gcTrue_gcp0.75_ah16_ph32_tceTrue_ntmaxmin_2024-11-24_17-17-18"),
+            "model_name": rospy.get_param(self.node_name + "/model/model_name", default="pidiff_bsz128_c1_ac1_gcTrue_gcp0.75_ah16_ph64_tceTrue_ntmaxmin_2024-11-26_22-06-00"),
             "model_version": str(rospy.get_param(self.node_name + "/model/model_version", default="best_model")),
             "frame_rate": rospy.get_param(self.node_name + "/model/frame_rate", default=7),
             "pub_rate": rospy.get_param(self.node_name + "/model/pub_rate", default=10),
