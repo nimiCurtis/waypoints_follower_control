@@ -10,7 +10,7 @@ topics:
 
 # Control
 control:
-  ctrl_loop_freq: 20  # [hz]
+  ctrl_loop_freq: 25  # [hz]
   rotate_dist_threshold: 0.05 # [m]
   linear:
     max_vel: 1.8 # change depend on robot config
