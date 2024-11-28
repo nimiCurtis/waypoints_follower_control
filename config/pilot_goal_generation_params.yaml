@@ -37,7 +37,7 @@ model:
   frame_rate: 15 # NOTE: please pay atteniton that this value is similar to the sampling rate
                 # of the data collected to train the policy
 
-  inference_rate: 10
+  inference_rate: 8
 
   # # Vint 
   # pub_rate: 5
@@ -57,8 +57,7 @@ topics:
   odom_topic: /zedm/zed_node/odom
 
 filter:
-
-  sensor_moving_window_size: 10
+  sensor_moving_window_size: 1 # not in use
   smoothen_time: 0.2
 
 

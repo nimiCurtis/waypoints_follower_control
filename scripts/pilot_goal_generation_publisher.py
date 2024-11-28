@@ -108,7 +108,7 @@ class ROSTimers:
         rate = timer["rate"]
         limit = 1.0 / rate
 
-        if dt >= (limit - 0.001):
+        if dt >= (limit - 0.033):
             # rospy.loginfo(f"[Timer: {name}] Event up: {dt:.6f} >= {limit:.6f}.")
             
             timer["last_tick"] = current_time
@@ -135,6 +135,7 @@ class ROSTimers:
             )
         
         timer["rate"] = rate
+        timer['queue'] = deque(timer['queue'], maxlen=rate)
 
 
 def pos_yaw_from_odom(odom_msg:Odometry)->list:
@@ -505,7 +506,7 @@ class GoalGenerator(BaseGoalGenerator):
         self.last_goal_reached = rospy.Time.now()
         
         self.latest_image_msg = Image()
-        self.subgoal_gen = SubgoalsGen(threshold=2.5)
+        self.subgoal_gen = SubgoalsGen(threshold=1.5)
         self.subgoal_to_target = None
         
         
@@ -801,7 +802,7 @@ class GoalGenerator(BaseGoalGenerator):
                 img_msg = self.vision_memory_msgs[0]
                 use_mem = True
                 time_delta = self.mem_time_delta
-                rospy.loginfo_throttle(0.5, f"No target in context. Using memory! --> time delta is {time_delta} ---> goal is {goal_to_target}, Publish image msg")
+                rospy.loginfo(f"No target in context. Using memory! --> time delta is {time_delta} ---> goal is {goal_to_target}, Publish image msg")
                 self.memory_image_pub.publish(img_msg)
             else:
                 ## When starting and target at frame
